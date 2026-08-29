@@ -1,4 +1,4 @@
-// app.js — orquestra as três telas: Biblioteca, Carrinhos, Backup.
+// app.js — orquestra a tela única: carrinho (esquerda) + biblioteca por categorias (direita).
 
 const CATEGORIES = [
   { id: 'banners', label: 'Banners' },
@@ -10,17 +10,19 @@ const CATEGORIES = [
 ];
 
 const state = {
-  view: 'biblioteca',
-  items: [],           // cache em memória de todos os itens
-  groups: [],
-  objectUrls: new Map() // id -> object URL (pra não recriar toda hora)
+  items: [],
+  carts: [],
+  currentCartIndex: 0,
+  objectUrls: new Map() // id:kind -> object URL (pra não recriar toda hora)
 };
 
-const root = document.getElementById('view-root');
+const cartPanel = document.getElementById('cart-panel');
+const toolbar = document.getElementById('toolbar');
 const modalOverlay = document.getElementById('modal-overlay');
 const modalBox = document.getElementById('modal-box');
 const fileInputHidden = document.getElementById('file-input-hidden');
 const importInputHidden = document.getElementById('import-input-hidden');
+const btnBackup = document.getElementById('btn-backup');
 
 function urlFor(item, kind = 'thumb') {
   const key = item.id + ':' + kind;
@@ -42,95 +44,185 @@ function toast(msg) {
 
 function closeModal() {
   modalOverlay.classList.add('hidden');
+  modalOverlay.classList.remove('flex');
   modalBox.innerHTML = '';
 }
 
 function openModal(html) {
   modalBox.innerHTML = html;
   modalOverlay.classList.remove('hidden');
+  modalOverlay.classList.add('flex');
 }
 
 modalOverlay.addEventListener('click', (e) => {
   if (e.target === modalOverlay) closeModal();
 });
 
-async function reloadData() {
-  // Evita miniaturas "presas" quando um item é editado/substituído: gera URLs novas a cada render.
+function escapeHTML(s) {
+  return (s || '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+async function reloadItems() {
   for (const url of state.objectUrls.values()) URL.revokeObjectURL(url);
   state.objectUrls.clear();
-  [state.items, state.groups] = await Promise.all([DB.allItems(), DB.allGroups()]);
+  state.items = await DB.allItems();
+}
+
+async function reloadCarts() {
+  state.carts = await DB.allCarts();
+  if (state.currentCartIndex >= state.carts.length) {
+    state.currentCartIndex = Math.max(0, state.carts.length - 1);
+  }
 }
 
 async function render() {
-  await reloadData();
-  if (state.view === 'biblioteca') renderBiblioteca();
-  else if (state.view === 'carrinhos') renderCarrinhos();
-  else renderBackup();
+  await Promise.all([reloadItems(), reloadCarts()]);
+  renderCartPanel();
+  renderToolbar();
 }
 
 // ============================================================
-// TABS
+// CARRINHO (esquerda) — lista única, navegação com setas
 // ============================================================
-document.getElementById('tabs').addEventListener('click', (e) => {
-  const btn = e.target.closest('.tab');
-  if (!btn) return;
-  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-  btn.classList.add('active');
-  state.view = btn.dataset.view;
-  render();
-});
+function renderCartPanel() {
+  const cart = state.carts[state.currentCartIndex];
+
+  if (!cart) {
+    cartPanel.innerHTML = `
+      <div class="text-center text-text-dim max-w-xs">
+        <div class="text-4xl mb-2">🛒</div>
+        <h3 class="text-text text-lg font-bold mb-1.5">Nenhum carrinho ainda</h3>
+        <p class="text-[13.5px] leading-relaxed mb-5">Crie o primeiro carrinho pra começar a montar.</p>
+        <button id="btn-create-cart" class="bg-accent text-paper font-bold px-5 py-3 rounded-xl active:bg-accent-hover">＋ Novo carrinho</button>
+      </div>`;
+    document.getElementById('btn-create-cart').addEventListener('click', createCart);
+    return;
+  }
+
+  const atFirst = state.currentCartIndex === 0;
+  const atLast = state.currentCartIndex === state.carts.length - 1;
+
+  cartPanel.innerHTML = `
+    <button id="btn-prev-cart" ${atFirst ? 'disabled' : ''} title="Carrinho anterior"
+      class="absolute left-3 top-1/2 -translate-y-1/2 w-11 h-11 rounded-full bg-surface border border-border text-text text-xl flex items-center justify-center disabled:opacity-25 active:bg-surface-3 z-10">‹</button>
+    <button id="btn-next-cart" ${atLast ? 'disabled' : ''} title="Próximo carrinho"
+      class="absolute right-3 top-1/2 -translate-y-1/2 w-11 h-11 rounded-full bg-surface border border-border text-text text-xl flex items-center justify-center disabled:opacity-25 active:bg-surface-3 z-10">›</button>
+
+    <div class="w-full h-full max-h-full flex flex-col items-center justify-center py-2">
+      <div class="w-full max-w-[380px] flex items-center gap-2 mb-3 shrink-0">
+        <input id="cart-name-input" value="${escapeHTML(cart.name)}"
+          class="flex-1 min-w-0 bg-transparent border-none text-paper text-xl font-bold tracking-tight text-center focus:outline-none focus:bg-surface-2 rounded-lg px-2 py-1">
+        <button id="btn-new-cart" title="Novo carrinho"
+          class="w-9 h-9 shrink-0 rounded-full bg-surface border border-border text-accent text-lg font-bold flex items-center justify-center active:bg-surface-3">+</button>
+      </div>
+
+      <div class="rack-frame flex-1 min-h-0 w-auto max-w-full flex flex-col" style="aspect-ratio: 3 / 7">
+        <div class="flex-1 min-h-0 flex flex-col gap-1.5 pb-1.5">
+          <div class="rack-slot h-full" style="flex: 1.6 1 0%"></div>
+          ${[0, 1, 2].map(() => `
+            <div class="flex-1 min-h-0 grid grid-cols-4 gap-1">
+              ${[0, 1, 2, 3].map(() => '<div class="rack-slot rack-slot-shelf h-full"></div>').join('')}
+            </div>`).join('')}
+        </div>
+        <div class="rack-wheels shrink-0"><span class="rack-wheel left-1.5"></span><span class="rack-wheel right-1.5"></span></div>
+      </div>
+
+      <div class="w-full max-w-[380px] flex justify-end mt-3 shrink-0">
+        <button id="btn-delete-cart" title="Excluir carrinho"
+          class="w-9 h-9 rounded-full bg-surface border border-border text-danger flex items-center justify-center active:bg-surface-3">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
+        </button>
+      </div>
+    </div>
+  `;
+
+  bindCartPanelEvents(cart);
+}
+
+function bindCartPanelEvents(cart) {
+  document.getElementById('btn-prev-cart')?.addEventListener('click', () => {
+    if (state.currentCartIndex > 0) { state.currentCartIndex--; renderCartPanel(); }
+  });
+  document.getElementById('btn-next-cart')?.addEventListener('click', () => {
+    if (state.currentCartIndex < state.carts.length - 1) { state.currentCartIndex++; renderCartPanel(); }
+  });
+  document.getElementById('btn-new-cart').addEventListener('click', createCart);
+  document.getElementById('btn-delete-cart').addEventListener('click', () => deleteCart(cart));
+
+  const nameInput = document.getElementById('cart-name-input');
+  nameInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') nameInput.blur();
+    if (e.key === 'Escape') { nameInput.value = cart.name; nameInput.blur(); }
+  });
+  nameInput.addEventListener('blur', async () => {
+    const name = nameInput.value.trim();
+    if (!name || name === cart.name) { nameInput.value = cart.name; return; }
+    cart.name = name;
+    await DB.putCart(cart);
+  });
+}
+
+async function createCart() {
+  const cart = { id: uid(), name: `Carrinho ${state.carts.length + 1}`, itemIds: [], order: state.carts.length };
+  await DB.putCart(cart);
+  await reloadCarts();
+  state.currentCartIndex = state.carts.findIndex(c => c.id === cart.id);
+  renderCartPanel();
+}
+
+async function deleteCart(cart) {
+  if (!confirm(`Excluir "${cart.name}"?`)) return;
+  await DB.deleteCart(cart.id);
+  await reloadCarts();
+  renderCartPanel();
+}
 
 // ============================================================
-// BIBLIOTECA
+// BIBLIOTECA (direita) — por enquanto só exibição, sem função ao clicar
 // ============================================================
-function renderBiblioteca() {
-  const parts = CATEGORIES.map(cat => {
+function renderToolbar() {
+  toolbar.innerHTML = CATEGORIES.map(cat => {
     const items = state.items.filter(i => i.category === cat.id)
       .sort((a, b) => a.title.localeCompare(b.title, 'pt-BR'));
     const cards = items.map(itemCardHTML).join('');
     return `
-      <section class="shelf">
-        <div class="shelf-head">
-          <span class="shelf-label">${cat.label}</span>
-          <span class="shelf-count">${items.length} ${items.length === 1 ? 'item' : 'itens'}</span>
+      <section class="mb-7">
+        <div class="flex items-baseline gap-2.5 mb-3">
+          <span class="font-mono uppercase tracking-wide text-[12px] font-bold text-bg bg-paper px-2.5 py-1 rounded">${cat.label}</span>
+          <span class="text-[13px] text-text-dim">${items.length} ${items.length === 1 ? 'item' : 'itens'}</span>
         </div>
-        <div class="shelf-grid" data-cat="${cat.id}">
+        <div class="grid grid-cols-2 gap-2.5">
           ${cards}
-          <div class="add-tile" data-add-cat="${cat.id}">
-            <div class="plus">+</div>
-            <span class="label">Adicionar</span>
+          <div class="add-tile aspect-[3/4] border-[1.5px] border-dashed border-border rounded-lg flex flex-col items-center justify-center gap-1.5 text-text-dim cursor-pointer active:bg-surface" data-add-cat="${cat.id}">
+            <div class="text-2xl font-light leading-none text-accent">+</div>
+            <span class="text-[11.5px] font-semibold">Adicionar</span>
           </div>
         </div>
       </section>`;
   }).join('');
-  root.innerHTML = parts;
 
-  root.querySelectorAll('.add-tile[data-add-cat]').forEach(el => {
+  toolbar.querySelectorAll('.add-tile[data-add-cat]').forEach(el => {
     el.addEventListener('click', () => startUpload(el.dataset.addCat));
-  });
-  root.querySelectorAll('.item-card[data-item-id]').forEach(el => {
-    el.addEventListener('click', () => openItemDetail(el.dataset.itemId));
   });
 }
 
 function itemCardHTML(item) {
-  const badge = item.fileType === 'pdf' ? '<span class="pdf-badge">PDF</span>' : '';
-  const sub = item.subtitle ? `<div class="subtitle">${escapeHTML(item.subtitle)}</div>` : '';
+  const badge = item.fileType === 'pdf'
+    ? '<span class="absolute top-1.5 right-1.5 bg-accent text-paper text-[9px] font-bold tracking-wide px-1.5 py-0.5 rounded font-mono">PDF</span>'
+    : '';
+  const sub = item.subtitle ? `<div class="text-[11px] text-text-dim mt-0.5 truncate">${escapeHTML(item.subtitle)}</div>` : '';
   return `
-    <div class="item-card" data-item-id="${item.id}">
-      <div class="thumb-wrap"><img loading="lazy" src="${urlFor(item, 'thumb')}" alt=""></div>
+    <div class="relative bg-surface border border-border rounded-lg overflow-hidden flex flex-col">
+      <div class="aspect-[3/4] bg-surface-2 overflow-hidden"><img loading="lazy" class="w-full h-full object-cover block" src="${urlFor(item, 'thumb')}" alt=""></div>
       ${badge}
-      <div class="meta">
-        <div class="title">${escapeHTML(item.title)}</div>
+      <div class="px-2 py-1.5">
+        <div class="text-[12.5px] font-semibold leading-tight line-clamp-2">${escapeHTML(item.title)}</div>
         ${sub}
       </div>
     </div>`;
 }
 
-function escapeHTML(s) {
-  return (s || '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-}
-
+// ---- upload de novo item pra biblioteca ----
 let pendingUploadCategory = null;
 function startUpload(categoryId) {
   pendingUploadCategory = categoryId;
@@ -143,8 +235,8 @@ fileInputHidden.addEventListener('change', async () => {
   if (!file) return;
   const category = pendingUploadCategory;
   openModal(`
-    <h2>Processando arquivo…</h2>
-    <div class="upload-progress"><div class="spinner"></div> Gerando miniatura da capa…</div>
+    <h2 class="text-[17px] font-bold m-0 mb-4">Processando arquivo…</h2>
+    <div class="flex items-center gap-2.5 text-text-dim text-[13px] py-2.5"><div class="spinner"></div> Gerando miniatura da capa…</div>
   `);
   try {
     const { thumbBlob, fileBlob, fileType, fileName } = await processUpload(file);
@@ -157,58 +249,48 @@ fileInputHidden.addEventListener('change', async () => {
   }
 });
 
-function showNewItemForm({ category, thumbBlob, fileBlob, fileType, fileName, suggestedTitle, existingItem }) {
-  const isEdit = !!existingItem;
+function showNewItemForm({ category, thumbBlob, fileBlob, fileType, fileName, suggestedTitle }) {
   const catLabel = CATEGORIES.find(c => c.id === category)?.label || category;
   const revistaField = category === 'revistas' ? `
-    <div class="field">
-      <label>Série</label>
-      <select id="f-serie">
+    <div class="mb-3.5">
+      <label class="field-label">Série</label>
+      <select id="f-serie" class="field-input">
         <option value="">—</option>
-        <option value="A Sentinela" ${existingItem?.subtitle?.startsWith('A Sentinela') ? 'selected' : ''}>A Sentinela</option>
-        <option value="Despertai!" ${existingItem?.subtitle?.startsWith('Despertai!') ? 'selected' : ''}>Despertai!</option>
+        <option value="A Sentinela">A Sentinela</option>
+        <option value="Despertai!">Despertai!</option>
       </select>
     </div>` : '';
 
   const previewUrl = URL.createObjectURL(thumbBlob);
 
   openModal(`
-    <h2>${isEdit ? 'Editar item' : 'Novo item'} · ${catLabel}</h2>
-    <div style="display:flex; gap:14px; margin-bottom:6px;">
-      <img src="${previewUrl}" style="width:90px;aspect-ratio:3/4;object-fit:cover;border-radius:8px;border:1px solid var(--border);flex-shrink:0;">
-      <div style="flex:1">
-        <div class="field">
-          <label>Título</label>
-          <input type="text" id="f-title" placeholder="Ex: Como ter uma família feliz" value="${escapeHTML(existingItem?.title || suggestedTitle || '')}">
+    <h2 class="text-[17px] font-bold m-0 mb-4">Novo item · ${catLabel}</h2>
+    <div class="flex gap-3.5 mb-1.5">
+      <img src="${previewUrl}" class="w-[90px] aspect-[3/4] object-cover rounded-lg border border-border shrink-0">
+      <div class="flex-1 min-w-0">
+        <div class="mb-3.5">
+          <label class="field-label">Título</label>
+          <input type="text" id="f-title" class="field-input" placeholder="Ex: Como ter uma família feliz" value="${escapeHTML(suggestedTitle || '')}">
         </div>
         ${category !== 'revistas' ? `
-        <div class="field">
-          <label>Observação (opcional)</label>
-          <input type="text" id="f-subtitle" placeholder="Ex: Nº 3 2020" value="${escapeHTML(existingItem?.subtitle || '')}">
+        <div class="mb-3.5">
+          <label class="field-label">Observação (opcional)</label>
+          <input type="text" id="f-subtitle" class="field-input" placeholder="Ex: Nº 3 2020">
         </div>` : `
-        <div class="field">
-          <label>Edição (opcional)</label>
-          <input type="text" id="f-edicao" placeholder="Ex: Nº 3 2020" value="${escapeHTML((existingItem?.subtitle || '').replace(/^(A Sentinela|Despertai!)\s*·?\s*/, ''))}">
+        <div class="mb-3.5">
+          <label class="field-label">Edição (opcional)</label>
+          <input type="text" id="f-edicao" class="field-input" placeholder="Ex: Nº 3 2020">
         </div>
         ${revistaField}`}
       </div>
     </div>
-    <div class="modal-actions">
-      ${isEdit ? '<button class="cancel" id="f-delete" style="color:var(--danger)">Excluir</button>' : '<button class="cancel" id="f-cancel">Cancelar</button>'}
-      <button class="confirm" id="f-save">Salvar</button>
+    <div class="flex gap-2.5 mt-4">
+      <button class="btn-cancel" id="f-cancel">Cancelar</button>
+      <button class="btn-confirm" id="f-save">Salvar</button>
     </div>
   `);
 
-  document.getElementById('f-cancel')?.addEventListener('click', closeModal);
-  document.getElementById('f-delete')?.addEventListener('click', async () => {
-    if (!confirm('Excluir este item da biblioteca? Ele será removido de qualquer carrinho que o use.')) return;
-    await DB.deleteItem(existingItem.id);
-    removeItemFromAllCarts(existingItem.id);
-    closeModal();
-    toast('Item excluído.');
-    render();
-  });
-
+  document.getElementById('f-cancel').addEventListener('click', closeModal);
   document.getElementById('f-save').addEventListener('click', async () => {
     const title = document.getElementById('f-title').value.trim();
     if (!title) { toast('Dê um título pro item.'); return; }
@@ -220,337 +302,49 @@ function showNewItemForm({ category, thumbBlob, fileBlob, fileType, fileName, su
     } else {
       subtitle = document.getElementById('f-subtitle').value.trim();
     }
-    const item = {
-      id: existingItem?.id || uid(),
-      category,
-      title,
-      subtitle,
-      fileType,
-      fileName,
-      thumbBlob,
-      fileBlob,
-      createdAt: existingItem?.createdAt || Date.now()
-    };
+    const item = { id: uid(), category, title, subtitle, fileType, fileName, thumbBlob, fileBlob, createdAt: Date.now() };
     await DB.putItem(item);
     closeModal();
-    toast(isEdit ? 'Item atualizado.' : 'Item adicionado à biblioteca.');
-    render();
-  });
-}
-
-async function openItemDetail(id) {
-  const item = await DB.getItem(id);
-  if (!item) return;
-  showNewItemForm({
-    category: item.category,
-    thumbBlob: item.thumbBlob,
-    fileBlob: item.fileBlob,
-    fileType: item.fileType,
-    fileName: item.fileName,
-    existingItem: item
+    toast('Item adicionado à biblioteca.');
+    await reloadItems();
+    renderToolbar();
   });
 }
 
 // ============================================================
-// CARRINHOS
+// BACKUP — ícone no topo abre modal
 // ============================================================
-function renderCarrinhos() {
-  if (state.groups.length === 0) {
-    root.innerHTML = `
-      <button class="add-group-btn" id="btn-add-group">＋ Nova ocasião</button>
-      <div class="empty-state">
-        <div class="big">🛒</div>
-        <h3>Nenhum carrinho ainda</h3>
-        <p>Crie uma ocasião (ex: "Mercado Municipal", "Ração") e monte o carrinho com um banner e as publicações, igual no seu layout do Figma.</p>
-      </div>`;
-    document.getElementById('btn-add-group').addEventListener('click', () => showNewGroupForm());
-    return;
-  }
+btnBackup.addEventListener('click', openBackupModal);
 
-  const html = state.groups.map(groupHTML).join('');
-  root.innerHTML = `<button class="add-group-btn" id="btn-add-group">＋ Nova ocasião</button>` + html;
-  document.getElementById('btn-add-group').addEventListener('click', () => showNewGroupForm());
-
-  root.querySelectorAll('[data-edit-group]').forEach(el =>
-    el.addEventListener('click', () => showNewGroupForm(findGroup(el.dataset.editGroup))));
-  root.querySelectorAll('[data-del-group]').forEach(el =>
-    el.addEventListener('click', () => deleteGroup(el.dataset.delGroup)));
-  root.querySelectorAll('[data-add-cart]').forEach(el =>
-    el.addEventListener('click', () => addCartToGroup(el.dataset.addCart)));
-  root.querySelectorAll('[data-del-cart]').forEach(el =>
-    el.addEventListener('click', () => deleteCart(el.dataset.delCart, el.dataset.cartId)));
-  root.querySelectorAll('[data-cart-add-item]').forEach(el =>
-    el.addEventListener('click', () => openItemPicker(el.dataset.cartAddItem, el.dataset.cartId)));
-  root.querySelectorAll('[data-rm-cart-item]').forEach(el =>
-    el.addEventListener('click', (e) => {
-      e.stopPropagation();
-      removeCartItem(el.dataset.rmCartItem, el.dataset.cartId, Number(el.dataset.idx));
-    }));
-  root.querySelectorAll('[data-move-up]').forEach(el =>
-    el.addEventListener('click', () => moveCartItem(el.dataset.moveUp, el.dataset.cartId, Number(el.dataset.idx), -1)));
-  root.querySelectorAll('[data-move-down]').forEach(el =>
-    el.addEventListener('click', () => moveCartItem(el.dataset.moveDown, el.dataset.cartId, Number(el.dataset.idx), 1)));
-}
-
-async function moveCartItem(groupId, cartId, idx, dir) {
-  const group = findGroup(groupId);
-  const cart = findCart(group, cartId);
-  const j = idx + dir;
-  if (j < 0 || j >= cart.itemIds.length) return;
-  [cart.itemIds[idx], cart.itemIds[j]] = [cart.itemIds[j], cart.itemIds[idx]];
-  await DB.putGroup(group);
-  render();
-}
-
-function findGroup(id) { return state.groups.find(g => g.id === id); }
-function findCart(group, cartId) { return group.carts.find(c => c.id === cartId); }
-
-function groupHTML(group) {
-  const cartsHTML = group.carts.map(cart => cartColHTML(group, cart)).join('');
-  return `
-    <div class="group-card" data-group-id="${group.id}">
-      <div class="group-head">
-        <h2>${escapeHTML(group.name)}</h2>
-        <button class="icon-btn" data-edit-group="${group.id}" title="Renomear">✎</button>
-        <button class="icon-btn danger" data-del-group="${group.id}" title="Excluir ocasião">🗑</button>
-      </div>
-      <div class="carts-row">
-        ${cartsHTML}
-        <div class="add-cart-col" data-add-cart="${group.id}">＋<br>carrinho</div>
-      </div>
-    </div>`;
-}
-
-// Representação visual do carrinho físico: banner no topo (fileira inteira) + até 3
-// "andares" de publicações, 4 lado a lado por andar — igual à estrutura real do rack.
-const SHELF_SIZE = 4;
-
-function cartColHTML(group, cart) {
-  const entries = cart.itemIds
-    .map((id, idx) => ({ id, idx, item: state.items.find(i => i.id === id) }))
-    .filter(e => e.item);
-  const last = entries.length - 1;
-
-  function orderBtns(idx) {
-    return `
-      <div class="item-order">
-        <button ${idx === 0 ? 'disabled' : ''} data-move-up="${group.id}" data-cart-id="${cart.id}" data-idx="${idx}">▲</button>
-        <button ${idx === last ? 'disabled' : ''} data-move-down="${group.id}" data-cart-id="${cart.id}" data-idx="${idx}">▼</button>
-      </div>`;
-  }
-
-  function entryHTML(e) {
-    return `
-      <div class="cart-item" data-item-id="${e.id}">
-        <img src="${urlFor(e.item, 'thumb')}" alt="">
-        ${orderBtns(e.idx)}
-        <button class="rm" data-rm-cart-item="${group.id}" data-cart-id="${cart.id}" data-idx="${e.idx}">×</button>
-      </div>`;
-  }
-
-  // agrupa em fileiras: banners ocupam a fileira inteira, o resto vai SHELF_SIZE a SHELF_SIZE (andar)
-  const rows = [];
-  let shelfBuf = [];
-  const flushShelf = () => { if (shelfBuf.length) { rows.push({ type: 'shelf', entries: shelfBuf }); shelfBuf = []; } };
-  for (const e of entries) {
-    if (e.item.category === 'banners') {
-      flushShelf();
-      rows.push({ type: 'banner', entries: [e] });
-    } else {
-      shelfBuf.push(e);
-      if (shelfBuf.length === SHELF_SIZE) flushShelf();
-    }
-  }
-  flushShelf();
-
-  const emptySlots = (n) => '<div class="cart-item empty-slot"></div>'.repeat(n);
-
-  const bodyHTML = entries.length
-    ? rows.map(row => row.type === 'banner'
-        ? `<div class="cart-row banner-row">${entryHTML(row.entries[0])}</div>`
-        : `<div class="cart-row shelf-row">${row.entries.map(entryHTML).join('')}${emptySlots(SHELF_SIZE - row.entries.length)}</div>`
-      ).join('')
-    : `
-      <div class="cart-row banner-row"><div class="cart-item empty-slot"></div></div>
-      <div class="cart-row shelf-row">${emptySlots(SHELF_SIZE)}</div>
-      <div class="cart-row shelf-row">${emptySlots(SHELF_SIZE)}</div>
-      <div class="cart-row shelf-row">${emptySlots(SHELF_SIZE)}</div>
-    `;
-
-  return `
-    <div class="cart-col">
-      <div class="cart-col-head">
-        <span class="name">${escapeHTML(cart.name)}</span>
-        <button class="icon-btn danger" style="width:24px;height:24px;font-size:12px" data-del-cart="${group.id}" data-cart-id="${cart.id}" title="Excluir carrinho">🗑</button>
-      </div>
-      <div class="cart-frame ${entries.length ? '' : 'skeleton'}">
-        <div class="cart-body">${bodyHTML}</div>
-        <div class="cart-wheels"><span class="wheel"></span><span class="wheel"></span></div>
-      </div>
-      <button class="cart-add-btn" data-cart-add-item="${group.id}" data-cart-id="${cart.id}">+ Item</button>
-    </div>`;
-}
-
-function showNewGroupForm(existingGroup) {
-  const isEdit = !!existingGroup;
+function openBackupModal() {
   openModal(`
-    <h2>${isEdit ? 'Renomear ocasião' : 'Nova ocasião'}</h2>
-    <div class="field">
-      <label>Nome</label>
-      <input type="text" id="g-name" placeholder="Ex: Mercado Municipal | Feira" value="${escapeHTML(existingGroup?.name || '')}">
+    <h2 class="text-[17px] font-bold m-0 mb-4">Backup</h2>
+    <div class="flex gap-3.5 mb-5">
+      <div class="flex-1 bg-surface-2 border border-border rounded-lg p-3.5 text-center">
+        <div class="text-2xl font-extrabold font-mono text-paper">${state.items.length}</div>
+        <div class="text-[11px] text-text-dim uppercase tracking-wide mt-0.5">itens</div>
+      </div>
+      <div class="flex-1 bg-surface-2 border border-border rounded-lg p-3.5 text-center">
+        <div class="text-2xl font-extrabold font-mono text-paper">${state.carts.length}</div>
+        <div class="text-[11px] text-text-dim uppercase tracking-wide mt-0.5">carrinhos</div>
+      </div>
     </div>
-    <div class="modal-actions">
-      <button class="cancel" id="g-cancel">Cancelar</button>
-      <button class="confirm" id="g-save">Salvar</button>
+
+    <div class="mb-5">
+      <h3 class="text-[15px] font-bold mb-1.5">Exportar backup</h3>
+      <p class="text-text-dim text-[13px] leading-relaxed mb-3">Gera um .zip com toda a biblioteca (imagens e PDFs) e todos os carrinhos.</p>
+      <button id="btn-export" class="w-full py-3.5 rounded-lg border-none font-bold text-[15px] bg-accent text-paper active:brightness-90 cursor-pointer">Exportar backup (.zip)</button>
+    </div>
+
+    <div>
+      <h3 class="text-[15px] font-bold mb-1.5">Importar backup</h3>
+      <p class="text-text-dim text-[13px] leading-relaxed mb-3">Restaura a partir de um .zip exportado antes. Itens com o mesmo ID são atualizados.</p>
+      <button id="btn-import" class="w-full py-3.5 rounded-lg border border-border font-bold text-[15px] bg-surface-3 text-text active:brightness-90 cursor-pointer">Selecionar arquivo .zip</button>
     </div>
   `);
-  document.getElementById('g-cancel').addEventListener('click', closeModal);
-  document.getElementById('g-save').addEventListener('click', async () => {
-    const name = document.getElementById('g-name').value.trim();
-    if (!name) { toast('Dê um nome pra ocasião.'); return; }
-    if (isEdit) {
-      existingGroup.name = name;
-      await DB.putGroup(existingGroup);
-    } else {
-      const group = {
-        id: uid(),
-        name,
-        order: state.groups.length,
-        carts: [
-          { id: uid(), name: 'Carrinho 1', itemIds: [] },
-          { id: uid(), name: 'Carrinho 2', itemIds: [] }
-        ]
-      };
-      await DB.putGroup(group);
-    }
-    closeModal();
-    render();
-  });
-}
 
-async function deleteGroup(id) {
-  if (!confirm('Excluir esta ocasião e seus carrinhos? Os itens continuam na biblioteca.')) return;
-  await DB.deleteGroup(id);
-  render();
-}
-
-async function addCartToGroup(groupId) {
-  const group = findGroup(groupId);
-  const n = group.carts.length + 1;
-  group.carts.push({ id: uid(), name: `Carrinho ${n}`, itemIds: [] });
-  await DB.putGroup(group);
-  render();
-}
-
-async function deleteCart(groupId, cartId) {
-  const group = findGroup(groupId);
-  if (group.carts.length <= 1) {
-    if (!confirm('Excluir o único carrinho desta ocasião? Isso vai remover a ocasião inteira.')) return;
-    await DB.deleteGroup(groupId);
-    render();
-    return;
-  }
-  if (!confirm('Excluir este carrinho?')) return;
-  group.carts = group.carts.filter(c => c.id !== cartId);
-  await DB.putGroup(group);
-  render();
-}
-
-async function removeCartItem(groupId, cartId, idx) {
-  const group = findGroup(groupId);
-  const cart = findCart(group, cartId);
-  cart.itemIds.splice(idx, 1);
-  await DB.putGroup(group);
-  render();
-}
-
-async function removeItemFromAllCarts(itemId) {
-  for (const group of state.groups) {
-    let changed = false;
-    for (const cart of group.carts) {
-      const before = cart.itemIds.length;
-      cart.itemIds = cart.itemIds.filter(id => id !== itemId);
-      if (cart.itemIds.length !== before) changed = true;
-    }
-    if (changed) await DB.putGroup(group);
-  }
-}
-
-// ---- picker de itens da biblioteca pra adicionar num carrinho ----
-function openItemPicker(groupId, cartId) {
-  let activeCat = CATEGORIES[0].id;
-
-  function bodyHTML() {
-    const items = state.items.filter(i => i.category === activeCat)
-      .sort((a, b) => a.title.localeCompare(b.title, 'pt-BR'));
-    return items.map(itemCardHTML).join('') || '<p style="color:var(--text-dim);font-size:13px;padding:20px 0;">Nenhum item nessa categoria ainda. Adicione na Biblioteca.</p>';
-  }
-
-  openModal(`
-    <h2>Adicionar item ao carrinho</h2>
-    <div class="picker-tabs">
-      ${CATEGORIES.map(c => `<button data-cat="${c.id}" class="${c.id === activeCat ? 'active' : ''}">${c.label}</button>`).join('')}
-    </div>
-    <div class="picker-grid" id="picker-grid">${bodyHTML()}</div>
-  `);
-
-  function bindGrid() {
-    document.querySelectorAll('#picker-grid .item-card').forEach(el => {
-      el.addEventListener('click', async () => {
-        const group = findGroup(groupId);
-        const cart = findCart(group, cartId);
-        cart.itemIds.push(el.dataset.itemId);
-        await DB.putGroup(group);
-        closeModal();
-        render();
-      });
-    });
-  }
-  bindGrid();
-
-  modalBox.querySelectorAll('.picker-tabs button').forEach(btn => {
-    btn.addEventListener('click', () => {
-      activeCat = btn.dataset.cat;
-      modalBox.querySelectorAll('.picker-tabs button').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      document.getElementById('picker-grid').innerHTML = bodyHTML();
-      bindGrid();
-    });
-  });
-}
-
-// ============================================================
-// BACKUP
-// ============================================================
-function renderBackup() {
-  const totalItems = state.items.length;
-  const totalGroups = state.groups.length;
-  const totalCarts = state.groups.reduce((n, g) => n + g.carts.length, 0);
-
-  root.innerHTML = `
-    <div class="backup-view">
-      <div class="stat-row">
-        <div class="stat"><div class="n">${totalItems}</div><div class="l">itens</div></div>
-        <div class="stat"><div class="n">${totalGroups}</div><div class="l">ocasiões</div></div>
-        <div class="stat"><div class="n">${totalCarts}</div><div class="l">carrinhos</div></div>
-      </div>
-
-      <div class="backup-card">
-        <h2>Exportar backup</h2>
-        <p>Gera um arquivo .zip com toda a biblioteca (imagens e PDFs) e todos os carrinhos montados. Guarde no iCloud Drive, Google Drive ou onde preferir.</p>
-        <button class="big-btn primary" id="btn-export">Exportar backup (.zip)</button>
-      </div>
-
-      <div class="backup-card">
-        <h2>Importar backup</h2>
-        <p>Restaura a partir de um arquivo .zip exportado antes. Itens com o mesmo ID são atualizados; o restante é adicionado.</p>
-        <button class="big-btn secondary" id="btn-import">Selecionar arquivo .zip</button>
-      </div>
-    </div>
-  `;
-
-  document.getElementById('btn-export').addEventListener('click', async () => {
-    const btn = document.getElementById('btn-export');
+  document.getElementById('btn-export').addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
     btn.textContent = 'Gerando .zip…';
     btn.disabled = true;
     try {
@@ -575,12 +369,14 @@ importInputHidden.addEventListener('change', async () => {
   const file = importInputHidden.files[0];
   if (!file) return;
   if (!confirm('Importar este backup? Itens e carrinhos com o mesmo ID serão substituídos.')) return;
-  openModal(`<h2>Importando…</h2><div class="upload-progress"><div class="spinner"></div> Restaurando biblioteca e carrinhos…</div>`);
+  openModal(`<h2 class="text-[17px] font-bold m-0 mb-4">Importando…</h2><div class="flex items-center gap-2.5 text-text-dim text-[13px] py-2.5"><div class="spinner"></div> Restaurando biblioteca e carrinhos…</div>`);
   try {
     const result = await importBackup(file);
     closeModal();
-    toast(`Importado: ${result.items} itens, ${result.groups} ocasiões.`);
-    render();
+    toast(`Importado: ${result.items} itens, ${result.carts} carrinhos.`);
+    await Promise.all([reloadItems(), reloadCarts()]);
+    renderToolbar();
+    renderCartPanel();
   } catch (err) {
     console.error(err);
     closeModal();

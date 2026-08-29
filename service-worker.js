@@ -1,4 +1,4 @@
-const CACHE_NAME = 'carrinho-publicacoes-v1';
+const CACHE_NAME = 'carrinho-publicacoes-v2';
 const ASSETS = [
   './',
   './index.html',

@@ -5,7 +5,7 @@ function extFromFileName(name, fallback) {
 }
 
 async function exportBackup() {
-  const [items, groups] = await Promise.all([DB.allItems(), DB.allGroups()]);
+  const [items, carts] = await Promise.all([DB.allItems(), DB.allCarts()]);
   const zip = new JSZip();
   const thumbsFolder = zip.folder('thumbs');
   const filesFolder = zip.folder('files');
@@ -32,10 +32,10 @@ async function exportBackup() {
   }
 
   zip.file('data.json', JSON.stringify({
-    version: 1,
+    version: 2,
     exportedAt: new Date().toISOString(),
     items: itemsMeta,
-    groups
+    carts
   }, null, 2));
 
   const blob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 } });
@@ -80,9 +80,11 @@ async function importBackup(file) {
     });
   }
 
-  for (const group of data.groups || []) {
-    await DB.putGroup(group);
+  // backups v2 já trazem "carts" direto; backups v1 (antigos) trazem "groups" com carts aninhados.
+  const carts = data.carts || (data.groups || []).flatMap(g => g.carts || []);
+  for (const cart of carts) {
+    await DB.putCart(cart);
   }
 
-  return { items: (data.items || []).length, groups: (data.groups || []).length };
+  return { items: (data.items || []).length, carts: carts.length };
 }

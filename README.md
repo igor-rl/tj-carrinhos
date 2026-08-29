@@ -1,9 +1,9 @@
 # Carrinho de Publicações
 
 App web (PWA) para montar os carrinhos de literatura, do jeito que você já organiza no Figma:
-uma **Biblioteca** de banners/folhetos/brochuras/convites/livros/revistas, e **Carrinhos**
-agrupados por ocasião (Mercado Municipal, Ração, Finados...), cada um com "Carrinho 1",
-"Carrinho 2" etc.
+uma tela única com o **carrinho** à esquerda (navegue entre eles com as setas ‹ ›) e a
+**biblioteca** de banners/folhetos/brochuras/convites/livros/revistas à direita, dividida por
+categoria.
 
 Funciona **100% offline** depois do primeiro carregamento (service worker + IndexedDB).
 Os arquivos (imagens e PDFs) ficam salvos localmente no navegador do iPad. Como é local,
@@ -38,26 +38,29 @@ Depois de abrir a URL no Safari do iPad:
 
 ## Uso
 
-- **Biblioteca**: toque em "Adicionar" em qualquer categoria, escolha uma imagem ou PDF.
-  Se for PDF, a capa (1ª página) vira a miniatura automaticamente. Dê um título e salve.
-- **Carrinhos**: crie uma "ocasião" (ex: "Mercado Municipal | Feira"), que já vem com
-  Carrinho 1 e Carrinho 2. Em cada carrinho, toque em "+ Item" pra escolher da biblioteca
-  (banner, folheto, revista etc.). Use as setinhas ▲▼ pra reordenar a pilha.
-- **Backup**: exporte um `.zip` sempre que quiser garantir uma cópia (leva pro iCloud Drive,
-  Google Drive, e-mail, onde preferir). Pra restaurar em outro iPad, importe o mesmo `.zip`.
+- **Carrinho** (esquerda): use ‹ › pra navegar entre os carrinhos, toque no nome pra
+  renomear, ＋ no topo cria um novo, o lixo no canto inferior exclui o atual.
+- **Biblioteca** (direita, rolável): toque em "Adicionar" em qualquer categoria, escolha
+  uma imagem ou PDF. Se for PDF, a capa (1ª página) vira a miniatura automaticamente.
+- **Backup**: ícone no topo abre a modal — exporte um `.zip` sempre que quiser garantir
+  uma cópia (leva pro iCloud Drive, Google Drive, e-mail, onde preferir). Pra restaurar em
+  outro iPad, importe o mesmo `.zip`.
 
 ## Estrutura do projeto
 
 ```
 index.html          shell do app
-styles.css           identidade visual
-db.js                 IndexedDB (biblioteca + carrinhos)
-files.js              geração de miniatura (imagem / capa de PDF via pdf.js)
-backup.js             export/import em .zip (JSZip)
-app.js                telas e interações
-service-worker.js      cache offline
-manifest.json          metadados do PWA (ícone, nome, tela cheia)
-vendor/                pdf.js e JSZip vendorizados (sem depender de CDN)
+styles.css           CSS compilado (gerado pelo Tailwind — não editar à mão)
+src/input.css        fonte do Tailwind (tema, componentes)
+db.js                IndexedDB (biblioteca + carrinhos)
+files.js             geração de miniatura (imagem / capa de PDF via pdf.js)
+backup.js            export/import em .zip (JSZip)
+app.js               telas e interações
+service-worker.js    cache offline
+manifest.json        metadados do PWA (ícone, nome, tela cheia)
+vendor/              pdf.js e JSZip vendorizados (sem depender de CDN)
 ```
 
 Sem dependências externas em tempo de execução — tudo que o app precisa já está na pasta.
+O Tailwind só entra como build local (`npm run build:css`) pra gerar o `styles.css`; o site
+publicado continua puro HTML/CSS/JS estático, sem build step no navegador.

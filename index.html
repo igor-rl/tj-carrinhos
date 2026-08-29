@@ -13,29 +13,33 @@
 </head>
 <body>
 
-<div id="app">
+<div id="app" class="h-[100dvh] flex flex-col overflow-hidden">
 
   <!-- Barra superior -->
-  <header class="topbar">
-    <div class="topbar-tag">CP</div>
-    <h1>Carrinho de Publicações</h1>
-    <nav class="tabs" id="tabs">
-      <button class="tab active" data-view="biblioteca">Biblioteca</button>
-      <button class="tab" data-view="carrinhos">Carrinhos</button>
-      <button class="tab" data-view="backup">Backup</button>
-    </nav>
+  <header class="flex items-center gap-3.5 shrink-0 px-5 py-3.5 pt-[max(14px,env(safe-area-inset-top))] bg-gradient-to-b from-[#17150f] to-[#15140fee] border-b border-border">
+    <div class="font-mono font-bold text-[13px] tracking-wide bg-accent text-paper px-2 py-1 rounded-md -rotate-2 shadow-[0_2px_0_rgba(0,0,0,0.35)]">CP</div>
+    <h1 class="text-[19px] font-bold tracking-tight m-0 mr-auto text-paper">Carrinho de Publicações</h1>
+    <button id="btn-backup" title="Backup" class="w-9 h-9 inline-flex items-center justify-center rounded-full border border-border bg-surface text-text-dim active:bg-surface-3">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8v13H3V8"/><path d="M1 3h22v5H1z"/><path d="M10 12h4"/></svg>
+    </button>
   </header>
 
-  <main id="view-root"></main>
+  <div class="flex flex-1 min-h-0">
+    <!-- Carrinho (esquerda, não rolável) -->
+    <main id="cart-panel" class="flex-1 min-w-0 flex items-center justify-center p-6 relative"></main>
+
+    <!-- Biblioteca (direita, rolável) -->
+    <aside id="toolbar" class="w-[320px] shrink-0 border-l border-border overflow-y-auto p-4"></aside>
+  </div>
 
 </div>
 
-<!-- Modal genérico (seletor de item da biblioteca, formulário de novo item, etc.) -->
-<div id="modal-overlay" class="modal-overlay hidden">
-  <div id="modal-box" class="modal-box"></div>
+<!-- Modal genérico (formulário de novo item, backup, etc.) -->
+<div id="modal-overlay" class="fixed inset-0 bg-black/65 backdrop-blur-sm z-[100] hidden items-end justify-center sm:items-center">
+  <div id="modal-box" class="bg-surface border border-border rounded-t-2xl sm:rounded-2xl w-full max-w-[640px] max-h-[86vh] overflow-y-auto p-5 pb-[max(20px,env(safe-area-inset-bottom))]"></div>
 </div>
 
-<div id="toast" class="toast hidden"></div>
+<div id="toast" class="hidden fixed left-1/2 -translate-x-1/2 bottom-[max(20px,env(safe-area-inset-bottom))] bg-paper text-bg px-5 py-2.5 rounded-full text-[13.5px] font-bold z-[200] shadow-[0_6px_20px_rgba(0,0,0,0.4)]"></div>
 
 <input type="file" id="file-input-hidden" accept="image/*,application/pdf" style="display:none">
 <input type="file" id="import-input-hidden" accept=".zip" style="display:none">

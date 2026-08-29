@@ -1,6 +1,6 @@
 // db.js — camada de persistência local (IndexedDB). Tudo funciona offline.
 const DB_NAME = 'carrinho-publicacoes';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 let dbPromise = null;
 
@@ -10,12 +10,36 @@ function openDB() {
     const req = indexedDB.open(DB_NAME, DB_VERSION);
     req.onupgradeneeded = (e) => {
       const db = e.target.result;
+      const tx = e.target.transaction;
+
       if (!db.objectStoreNames.contains('items')) {
         const items = db.createObjectStore('items', { keyPath: 'id' });
         items.createIndex('category', 'category', { unique: false });
       }
-      if (!db.objectStoreNames.contains('groups')) {
-        db.createObjectStore('groups', { keyPath: 'id' });
+      if (!db.objectStoreNames.contains('carts')) {
+        db.createObjectStore('carts', { keyPath: 'id' });
+      }
+
+      // Migração v1 -> v2: "groups" (ocasião com carts aninhados) virou lista única de "carts".
+      if (db.objectStoreNames.contains('groups')) {
+        const groupsStore = tx.objectStore('groups');
+        const cartsStore = tx.objectStore('carts');
+        groupsStore.getAll().onsuccess = (ev) => {
+          const groups = ev.target.result || [];
+          const multi = groups.length > 1;
+          let order = 0;
+          for (const group of groups) {
+            for (const cart of group.carts || []) {
+              cartsStore.put({
+                id: cart.id,
+                name: multi ? `${group.name} · ${cart.name}` : cart.name,
+                itemIds: cart.itemIds || [],
+                order: order++
+              });
+            }
+          }
+          db.deleteObjectStore('groups');
+        };
       }
     };
     req.onsuccess = () => resolve(req.result);
@@ -60,18 +84,18 @@ const DB = {
     return reqToPromise(idx.getAll(category));
   },
 
-  // ---------- GROUPS (ocasiões, cada uma com N carrinhos) ----------
-  async putGroup(group) {
-    const store = await tx('groups', 'readwrite');
-    await reqToPromise(store.put(group));
-    return group;
+  // ---------- CARTS (lista única de carrinhos) ----------
+  async putCart(cart) {
+    const store = await tx('carts', 'readwrite');
+    await reqToPromise(store.put(cart));
+    return cart;
   },
-  async deleteGroup(id) {
-    const store = await tx('groups', 'readwrite');
+  async deleteCart(id) {
+    const store = await tx('carts', 'readwrite');
     return reqToPromise(store.delete(id));
   },
-  async allGroups() {
-    const store = await tx('groups', 'readonly');
+  async allCarts() {
+    const store = await tx('carts', 'readonly');
     const all = await reqToPromise(store.getAll());
     return all.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
   },
@@ -80,7 +104,7 @@ const DB = {
   async wipeAll() {
     const s1 = await tx('items', 'readwrite');
     await reqToPromise(s1.clear());
-    const s2 = await tx('groups', 'readwrite');
+    const s2 = await tx('carts', 'readwrite');
     await reqToPromise(s2.clear());
   }
 };

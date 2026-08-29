@@ -1,0 +1,27 @@
+{
+  "name": "carrinho-app",
+  "version": "1.0.0",
+  "description": "App web (PWA) para montar os carrinhos de literatura, do jeito que você já organiza no Figma: uma **Biblioteca** de banners/folhetos/brochuras/convites/livros/revistas, e **Carrinhos** agrupados por ocasião (Mercado Municipal, Ração, Finados...), cada um com \"Carrinho 1\", \"Carrinho 2\" etc.",
+  "main": "app.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build:css": "tailwindcss -i ./src/input.css -o ./styles.css --minify",
+    "watch:css": "tailwindcss -i ./src/input.css -o ./styles.css --watch"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/igor-rl/tj-carrinhos.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/igor-rl/tj-carrinhos/issues"
+  },
+  "homepage": "https://github.com/igor-rl/tj-carrinhos#readme",
+  "devDependencies": {
+    "@tailwindcss/cli": "^4.3.3",
+    "tailwindcss": "^4.3.3"
+  }
+}
