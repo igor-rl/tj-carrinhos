@@ -592,16 +592,18 @@ function getLastItemDefaults() {
   try {
     return {
       size: Number(localStorage.getItem('cp:lastSize')) || 1,
-      coverRightHalf: localStorage.getItem('cp:lastCoverRightHalf') === '1'
+      coverRightHalf: localStorage.getItem('cp:lastCoverRightHalf') === '1',
+      category: localStorage.getItem('cp:lastCategory') || ''
     };
   } catch {
-    return { size: 1, coverRightHalf: false };
+    return { size: 1, coverRightHalf: false, category: '' };
   }
 }
-function saveLastItemDefaults(size, coverRightHalf) {
+function saveLastItemDefaults(size, coverRightHalf, category) {
   try {
     localStorage.setItem('cp:lastSize', String(size));
     localStorage.setItem('cp:lastCoverRightHalf', coverRightHalf ? '1' : '0');
+    if (category !== undefined) localStorage.setItem('cp:lastCategory', category);
   } catch { /* localStorage indisponível — sem problema, é só conveniência */ }
 }
 
@@ -653,6 +655,7 @@ function showNewItemForm({ category, thumbBlob, fileBlob, fileType, fileName, su
   const isBanner = category === 'banners';
   const defaultSize = existingItem?.size ?? lastDefaults?.size ?? 1;
   const defaultCoverRightHalf = existingItem ? !!existingItem.coverRightHalf : !!lastDefaults?.coverRightHalf;
+  const defaultCategory = existingItem?.category || category || lastDefaults?.category || '';
   let previewUrl = URL.createObjectURL(thumbBlob);
 
   const categoryOptions = isBanner ? [] : [...new Set(
@@ -665,7 +668,7 @@ function showNewItemForm({ category, thumbBlob, fileBlob, fileType, fileName, su
   const categoryFieldHTML = isBanner ? '' : `
     <div class="mb-3.5">
       <label class="field-label">Categoria (opcional)</label>
-      <input type="text" id="f-category" class="field-input" list="category-options" placeholder="Ex: Folhetos — deixe em branco pra ficar em Publicações" value="${escapeHTML(existingItem?.category || category || '')}">
+      <input type="text" id="f-category" class="field-input" list="category-options" placeholder="Ex: Folhetos — deixe em branco pra ficar em Publicações" value="${escapeHTML(defaultCategory)}">
       <datalist id="category-options">${categoryOptions.map(c => `<option value="${escapeHTML(c)}">`).join('')}</datalist>
     </div>`;
 
@@ -753,7 +756,7 @@ function showNewItemForm({ category, thumbBlob, fileBlob, fileType, fileName, su
       createdAt: existingItem?.createdAt || Date.now()
     };
     if (!isBanner) item.size = Number(document.getElementById('f-size').value);
-    saveLastItemDefaults(item.size ?? defaultSize, coverRightHalf);
+    saveLastItemDefaults(item.size ?? defaultSize, coverRightHalf, isBanner ? undefined : finalCategory);
     await DB.putItem(item);
     closeModal();
     toast(isEdit ? 'Item atualizado.' : 'Item adicionado à biblioteca.');
