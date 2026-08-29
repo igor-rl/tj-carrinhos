@@ -103,7 +103,7 @@ function renderCartPanel() {
     <button id="btn-next-cart" ${atLast ? 'disabled' : ''} title="Próximo carrinho"
       class="absolute right-3 top-1/2 -translate-y-1/2 w-11 h-11 rounded-full bg-surface border border-border text-text text-xl flex items-center justify-center disabled:opacity-25 active:bg-surface-3 z-10">›</button>
 
-    <div class="w-full h-full max-h-full flex flex-col items-center justify-center py-2">
+    <div class="w-full h-full max-h-full overflow-y-auto flex flex-col items-center py-2">
       <div class="w-full max-w-[380px] flex items-center gap-2 mb-3 shrink-0">
         <input id="cart-name-input" value="${escapeHTML(cart.name)}"
           class="flex-1 min-w-0 bg-transparent border-none text-paper text-xl font-bold tracking-tight text-center focus:outline-none focus:bg-surface-2 rounded-lg px-2 py-1">
@@ -111,11 +111,11 @@ function renderCartPanel() {
           class="w-9 h-9 shrink-0 rounded-full bg-surface border border-border text-accent text-lg font-bold flex items-center justify-center active:bg-surface-3">+</button>
       </div>
 
-      <div class="rack-frame flex-1 min-h-0 w-auto max-w-full flex flex-col" style="aspect-ratio: 3 / 7">
-        <div class="flex-1 min-h-0 flex flex-col gap-1.5 pb-1.5">
+      <div class="rack-frame w-full max-w-[260px] flex flex-col">
+        <div class="flex flex-col gap-1.5 pb-1.5">
           ${bannerSlotHTML(cart)}
-          ${[0, 1, 2].map(row => `
-            <div class="flex-1 min-h-0 grid grid-cols-4 gap-1">
+          ${[1, 2].map(row => `
+            <div class="grid grid-cols-4 gap-1" style="aspect-ratio: 3 / 1">
               ${shelfRowHTML(cart, row)}
             </div>`).join('')}
         </div>
@@ -134,17 +134,24 @@ function renderCartPanel() {
   bindCartPanelEvents(cart);
 }
 
-// ---- slots do rack: vazio (alvo de drop) ou ocupado (item posicionado) ----
+// ---- banner: pano de fundo alto (proporção real da miniatura), com a fileira 1 encostada
+//      na base dele, na frente — como um banner de chão atrás das prateleiras ----
+const DEFAULT_BANNER_RATIO = '1035 / 2268'; // proporção de referência (banner real ~2.2:1 de altura)
+
 function bannerSlotHTML(cart) {
   const item = cart.bannerId && state.items.find(i => i.id === cart.bannerId);
-  if (item) {
-    return `
-      <div class="relative rounded-md overflow-hidden border border-border bg-surface-3 h-full" style="flex: 1.6 1 0%">
-        <img src="${urlFor(item, 'thumb')}" class="w-full h-full object-cover block" alt="">
-        <button class="absolute top-1 right-1 w-5 h-5 rounded-full bg-bg/80 text-paper text-[12px] flex items-center justify-center" data-remove-banner title="Remover">×</button>
-      </div>`;
-  }
-  return `<div class="rack-slot h-full" style="flex: 1.6 1 0%" data-drop="banner"></div>`;
+  const ratio = (item && item.thumbW && item.thumbH) ? `${item.thumbW} / ${item.thumbH}` : DEFAULT_BANNER_RATIO;
+  const backdrop = item
+    ? `<img src="${urlFor(item, 'thumb')}" class="absolute inset-0 w-full h-full object-cover" alt="">
+       <button class="absolute top-1 right-1 w-5 h-5 rounded-full bg-bg/80 text-paper text-[12px] flex items-center justify-center z-10" data-remove-banner title="Remover">×</button>`
+    : `<div class="absolute inset-0 rack-slot"></div>`;
+  return `
+    <div class="relative w-full shrink-0 rounded-md overflow-hidden" style="aspect-ratio: ${ratio}" data-drop="banner">
+      ${backdrop}
+      <div class="absolute bottom-0 left-0 right-0 grid grid-cols-4 gap-1" style="aspect-ratio: 3 / 1">
+        ${shelfRowHTML(cart, 0)}
+      </div>
+    </div>`;
 }
 
 function shelfRowHTML(cart, row) {
@@ -152,15 +159,17 @@ function shelfRowHTML(cart, row) {
   let col = 0;
   while (col < 4) {
     const idx = row * 4 + col;
-    const itemId = cart.shelf[idx];
-    if (!itemId) {
+    const slot = cart.shelf[idx];
+    if (!slot) {
       cells.push(`<div class="rack-slot rack-slot-shelf h-full" data-drop="shelf" data-slot-index="${idx}"></div>`);
       col++;
       continue;
     }
+    // agrupa por "placement" (a colocação), não pelo item — duas colocações adjacentes
+    // do mesmo item não devem se fundir numa célula só.
     let span = 1;
-    while (col + span < 4 && cart.shelf[idx + span] === itemId) span++;
-    const item = state.items.find(i => i.id === itemId);
+    while (col + span < 4 && cart.shelf[idx + span]?.placement === slot.placement) span++;
+    const item = state.items.find(i => i.id === slot.itemId);
     if (!item) {
       // referência órfã (item foi excluído da biblioteca) — mostra vazio
       cells.push(`<div class="rack-slot rack-slot-shelf h-full" data-drop="shelf" data-slot-index="${idx}"></div>`);
@@ -206,9 +215,9 @@ function bindCartPanelEvents(cart) {
   cartPanel.querySelectorAll('[data-remove-shelf]').forEach(btn => {
     btn.addEventListener('click', async () => {
       const startIdx = Number(btn.dataset.removeShelf);
-      const itemId = cart.shelf[startIdx];
+      const placement = cart.shelf[startIdx]?.placement;
       let i = startIdx;
-      while (i < 12 && cart.shelf[i] === itemId) { cart.shelf[i] = null; i++; }
+      while (i < 12 && cart.shelf[i]?.placement === placement) { cart.shelf[i] = null; i++; }
       await DB.putCart(cart);
       renderCartPanel();
     });
@@ -416,7 +425,8 @@ async function commitDrop(dropEl) {
   } else {
     const idx = Number(dropEl.dataset.slotIndex);
     const size = dragState.item.size || 1;
-    for (let i = 0; i < size; i++) cart.shelf[idx + i] = dragState.item.id;
+    const placement = uid();
+    for (let i = 0; i < size; i++) cart.shelf[idx + i] = { itemId: dragState.item.id, placement };
   }
   await DB.putCart(cart);
   renderCartPanel();
@@ -507,11 +517,11 @@ function startUpload() {
   fileInputHidden.click();
 }
 
-async function detectIsBanner(thumbBlob) {
+async function getThumbDims(thumbBlob) {
   const bitmap = await createImageBitmap(thumbBlob);
-  const ratio = bitmap.height / bitmap.width;
+  const dims = { w: bitmap.width, h: bitmap.height };
   bitmap.close?.();
-  return ratio >= BANNER_MIN_ASPECT;
+  return dims;
 }
 
 fileInputHidden.addEventListener('change', async () => {
@@ -523,9 +533,10 @@ fileInputHidden.addEventListener('change', async () => {
   `);
   try {
     const { thumbBlob, fileBlob, fileType, fileName } = await processUpload(file);
-    const category = (await detectIsBanner(thumbBlob)) ? 'banners' : '';
+    const { w, h } = await getThumbDims(thumbBlob);
+    const category = (h / w >= BANNER_MIN_ASPECT) ? 'banners' : '';
     const suggestedSigla = fileName.replace(/\.[a-z0-9]+$/i, '');
-    showNewItemForm({ category, thumbBlob, fileBlob, fileType, fileName, suggestedSigla });
+    showNewItemForm({ category, thumbBlob, fileBlob, fileType, fileName, suggestedSigla, thumbW: w, thumbH: h });
   } catch (err) {
     console.error(err);
     closeModal();
@@ -533,7 +544,7 @@ fileInputHidden.addEventListener('change', async () => {
   }
 });
 
-function showNewItemForm({ category, thumbBlob, fileBlob, fileType, fileName, suggestedSigla, existingItem }) {
+function showNewItemForm({ category, thumbBlob, fileBlob, fileType, fileName, suggestedSigla, thumbW, thumbH, existingItem }) {
   const isEdit = !!existingItem;
   const isBanner = category === 'banners';
   const previewUrl = URL.createObjectURL(thumbBlob);
@@ -552,11 +563,12 @@ function showNewItemForm({ category, thumbBlob, fileBlob, fileType, fileName, su
       <datalist id="category-options">${categoryOptions.map(c => `<option value="${escapeHTML(c)}">`).join('')}</datalist>
     </div>`;
 
+  const SIZE_OPTIONS = [{ n: 1, label: '1/4' }, { n: 2, label: '1/2' }, { n: 3, label: '3/4' }];
   const sizeFieldHTML = isBanner ? '' : `
     <div class="mb-3.5">
-      <label class="field-label">Tamanho no andar</label>
+      <label class="field-label">Largura no andar</label>
       <select id="f-size" class="field-input">
-        ${[1, 2, 3, 4].map(n => `<option value="${n}" ${(existingItem?.size ?? 1) === n ? 'selected' : ''}>${n}/4</option>`).join('')}
+        ${SIZE_OPTIONS.map(o => `<option value="${o.n}" ${(existingItem?.size ?? 1) === o.n ? 'selected' : ''}>${o.label}</option>`).join('')}
       </select>
     </div>`;
 
@@ -598,6 +610,7 @@ function showNewItemForm({ category, thumbBlob, fileBlob, fileType, fileName, su
     const item = {
       id: existingItem?.id || uid(),
       category: finalCategory, title, sigla, stock, fileType, fileName, thumbBlob, fileBlob,
+      thumbW: existingItem?.thumbW ?? thumbW, thumbH: existingItem?.thumbH ?? thumbH,
       createdAt: existingItem?.createdAt || Date.now()
     };
     if (!isBanner) item.size = Number(document.getElementById('f-size').value);
