@@ -256,7 +256,7 @@ function itemCardHTML(item) {
   const unavailable = item.stock === 0 || item.stock === null || item.stock === false;
   const unavailableTag = unavailable ? `
     <div class="absolute inset-0 flex items-center justify-center pointer-events-none">
-      <span class="text-[8px] font-bold uppercase tracking-wide text-danger bg-surface/90 border border-danger px-1.5 py-0.5 rounded text-center">Indisponível</span>
+      <span class="text-[9px] font-bold uppercase tracking-wide text-paper text-center">Indisponível</span>
     </div>` : '';
   return `
     <div class="relative bg-surface border border-border rounded-lg overflow-hidden flex flex-col" data-item-id="${item.id}">
