@@ -177,14 +177,13 @@ async function deleteCart(cart) {
 // ============================================================
 function byTitle(a, b) { return a.title.localeCompare(b.title, 'pt-BR'); }
 
-function itemsGridHTML(items, addCategoryValue) {
+function itemsGridHTML(items) {
+  if (!items.length) {
+    return '<p class="text-[12.5px] text-text-dim">Nenhum item ainda.</p>';
+  }
   return `
     <div class="grid grid-cols-[repeat(auto-fill,minmax(96px,1fr))] gap-2">
       ${items.map(itemCardHTML).join('')}
-      <div class="add-tile aspect-[3/4] border-[1.5px] border-dashed border-border rounded-lg flex flex-col items-center justify-center gap-1 text-text-dim cursor-pointer active:bg-surface" data-add-cat="${escapeHTML(addCategoryValue)}">
-        <div class="text-lg font-light leading-none text-accent">+</div>
-        <span class="text-[10px] font-semibold">Adicionar</span>
-      </div>
     </div>`;
 }
 
@@ -218,25 +217,29 @@ function renderToolbar() {
           <span class="text-[12.5px] font-bold text-text">${escapeHTML(cat)}</span>
           <span class="text-[11.5px] text-text-dim">${items.length} ${items.length === 1 ? 'item' : 'itens'}</span>
         </div>
-        ${itemsGridHTML(items, cat)}
+        ${itemsGridHTML(items)}
       </div>`;
   }).join('');
 
   toolbar.innerHTML = `
+    <div class="flex items-center justify-between mb-5">
+      <h2 class="text-[15px] font-bold text-text">Biblioteca</h2>
+      <button id="btn-add-item" class="flex items-center gap-1.5 bg-accent text-paper text-[13px] font-bold px-3.5 py-2 rounded-lg active:bg-accent-hover">
+        <span class="text-base leading-none">＋</span> Adicionar
+      </button>
+    </div>
     <section class="mb-7">
       ${sectionHeadHTML('Banners', banners.length)}
-      ${itemsGridHTML(banners, 'banners')}
+      ${itemsGridHTML(banners)}
     </section>
     <section class="mb-7">
       ${sectionHeadHTML(PUBLICACOES_LABEL, pubItems.length)}
-      ${itemsGridHTML(uncategorized, '')}
+      ${itemsGridHTML(uncategorized)}
       ${categorySectionsHTML}
     </section>
   `;
 
-  toolbar.querySelectorAll('.add-tile[data-add-cat]').forEach(el => {
-    el.addEventListener('click', () => startUpload(el.dataset.addCat));
-  });
+  document.getElementById('btn-add-item').addEventListener('click', startUpload);
   toolbar.querySelectorAll('[data-item-id]').forEach(el => {
     const item = state.items.find(i => i.id === el.dataset.itemId);
     if (item) el.addEventListener('contextmenu', (e) => openItemContextMenu(e, item));
@@ -244,9 +247,6 @@ function renderToolbar() {
 }
 
 function itemCardHTML(item) {
-  const badge = item.fileType === 'pdf'
-    ? '<span class="absolute top-1 right-1 bg-accent text-paper text-[8px] font-bold tracking-wide px-1 py-0.5 rounded font-mono">PDF</span>'
-    : '';
   const sub = item.sigla ? `<div class="text-[9.5px] text-text-dim mt-0.5 truncate">${escapeHTML(item.sigla)}</div>` : '';
   const unavailable = item.stock === 0;
   const unavailableOverlay = unavailable ? `
@@ -259,7 +259,6 @@ function itemCardHTML(item) {
         <img loading="lazy" class="w-full h-auto block${unavailable ? ' opacity-40' : ''}" src="${urlFor(item, 'thumb')}" alt="">
         ${unavailableOverlay}
       </div>
-      ${badge}
       <div class="px-1.5 py-1">
         <div class="text-[10.5px] font-semibold leading-tight line-clamp-2">${escapeHTML(item.title)}</div>
         ${sub}
@@ -344,24 +343,31 @@ async function removeItemFromAllCarts(itemId) {
   }
 }
 
-// ---- upload de novo item pra biblioteca ----
-let pendingUploadCategory = null;
-function startUpload(categoryId) {
-  pendingUploadCategory = categoryId;
+// ---- upload de novo item pra biblioteca (um botão só — banner é detectado pela proporção) ----
+const BANNER_MIN_ASPECT = 1.8; // altura/largura mínima pra contar como banner (banner real ≈ 2.2)
+
+function startUpload() {
   fileInputHidden.value = '';
   fileInputHidden.click();
+}
+
+async function detectIsBanner(thumbBlob) {
+  const bitmap = await createImageBitmap(thumbBlob);
+  const ratio = bitmap.height / bitmap.width;
+  bitmap.close?.();
+  return ratio >= BANNER_MIN_ASPECT;
 }
 
 fileInputHidden.addEventListener('change', async () => {
   const file = fileInputHidden.files[0];
   if (!file) return;
-  const category = pendingUploadCategory;
   openModal(`
     <h2 class="text-[17px] font-bold m-0 mb-4">Processando arquivo…</h2>
     <div class="flex items-center gap-2.5 text-text-dim text-[13px] py-2.5"><div class="spinner"></div> Gerando miniatura da capa…</div>
   `);
   try {
     const { thumbBlob, fileBlob, fileType, fileName } = await processUpload(file);
+    const category = (await detectIsBanner(thumbBlob)) ? 'banners' : '';
     const suggestedSigla = fileName.replace(/\.[a-z0-9]+$/i, '');
     showNewItemForm({ category, thumbBlob, fileBlob, fileType, fileName, suggestedSigla });
   } catch (err) {
