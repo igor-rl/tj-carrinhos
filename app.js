@@ -104,7 +104,7 @@ function renderCartPanel() {
     <button id="btn-next-cart" ${atLast ? 'disabled' : ''} title="Próximo carrinho"
       class="absolute right-3 top-1/2 -translate-y-1/2 w-11 h-11 rounded-full bg-surface border border-border text-text text-xl flex items-center justify-center disabled:opacity-25 active:bg-surface-3 z-10">›</button>
 
-    <div id="cart-scroll" class="w-full h-full max-h-full overflow-y-auto flex flex-col items-center py-2">
+    <div id="cart-content" class="w-full h-full max-h-full overflow-hidden flex flex-col items-center justify-center py-2">
       <div class="w-full max-w-[380px] flex items-center gap-2 mb-3 shrink-0">
         <input id="cart-name-input" value="${escapeHTML(cart.name)}"
           class="flex-1 min-w-0 bg-transparent border-none text-paper text-xl font-bold tracking-tight text-center focus:outline-none focus:bg-surface-2 rounded-lg px-2 py-1">
@@ -112,7 +112,7 @@ function renderCartPanel() {
           class="w-9 h-9 shrink-0 rounded-full bg-surface border border-border text-accent text-lg font-bold flex items-center justify-center active:bg-surface-3">+</button>
       </div>
 
-      <div class="rack-frame w-full max-w-[260px] flex flex-col">
+      <div id="cart-rack-frame" class="rack-frame w-full max-w-[260px] flex flex-col shrink-0">
         <div class="flex flex-col gap-1.5 pb-1.5">
           ${bannerSlotHTML(cart)}
           ${[1, 2].map(row => `
@@ -133,6 +133,26 @@ function renderCartPanel() {
   `;
 
   bindCartPanelEvents(cart);
+  fitCartRackToPanel();
+}
+
+// Encolhe o carrinho (via max-width, já que a altura toda deriva de aspect-ratio a partir da
+// largura) até caber na altura disponível sem precisar rolar — o banner tem proporção real
+// (às vezes bem alto), então isso não dá pra resolver só com CSS/aspect-ratio fixo.
+function fitCartRackToPanel() {
+  const content = document.getElementById('cart-content');
+  const rackFrame = document.getElementById('cart-rack-frame');
+  if (!content || !rackFrame) return;
+  rackFrame.style.maxWidth = '';
+  for (let i = 0; i < 4; i++) {
+    const available = content.clientHeight;
+    const actual = content.scrollHeight;
+    if (available <= 0 || actual <= available) return;
+    const currentWidth = rackFrame.getBoundingClientRect().width;
+    if (currentWidth <= 0) return;
+    const newWidth = Math.max(80, Math.floor(currentWidth * (available / actual) * 0.98));
+    rackFrame.style.maxWidth = newWidth + 'px';
+  }
 }
 
 // ---- banner: pano de fundo alto (proporção real da miniatura), com a fileira 1 encostada
@@ -143,7 +163,8 @@ function bannerSlotHTML(cart) {
   const item = cart.bannerId && state.items.find(i => i.id === cart.bannerId);
   const ratio = (item && item.thumbW && item.thumbH) ? `${item.thumbW} / ${item.thumbH}` : DEFAULT_BANNER_RATIO;
   const backdrop = item
-    ? `<img src="${urlFor(item, 'thumb')}" class="absolute inset-0 w-full h-full object-cover cursor-grab active:cursor-grabbing touch-none" data-move-banner alt="">
+    ? `<img src="${urlFor(item, 'thumb')}" class="absolute inset-0 w-full h-full object-cover cursor-grab active:cursor-grabbing touch-none${isItemUnavailable(item) ? ' brightness-[0.45]' : ''}" data-move-banner alt="">
+       ${unavailableTagHTML(item)}
        <button class="absolute top-1 right-1 w-5 h-5 rounded-full bg-bg/80 text-paper text-[12px] flex items-center justify-center z-10" data-remove-banner title="Remover">×</button>`
     : `<div class="absolute inset-0 rack-slot"></div>`;
   return `
@@ -177,7 +198,8 @@ function shelfRowHTML(cart, row) {
     } else {
       cells.push(`
         <div class="relative h-full" style="grid-column: span ${span}" data-drop="shelf" data-slot-index="${idx}">
-          <img src="${urlFor(item, 'thumb')}" class="absolute bottom-0 left-0 w-full h-auto block rounded-md cursor-grab active:cursor-grabbing touch-none" data-move-shelf="${idx}" data-move-span="${span}" alt="">
+          <img src="${urlFor(item, 'thumb')}" class="absolute bottom-0 left-0 w-full h-auto block rounded-md cursor-grab active:cursor-grabbing touch-none${isItemUnavailable(item) ? ' brightness-[0.45]' : ''}" data-move-shelf="${idx}" data-move-span="${span}" alt="">
+          ${unavailableTagHTML(item)}
           <button class="absolute top-0.5 right-0.5 w-4 h-4 rounded-full bg-bg/80 text-paper text-[10px] leading-none flex items-center justify-center" data-remove-shelf="${idx}" title="Remover">×</button>
         </div>`);
     }
@@ -365,27 +387,61 @@ function renderToolbar() {
       e.stopPropagation();
       openItemContextMenu(e, item);
     });
-    const isUnavailable = item.stock === 0 || item.stock === null || item.stock === false;
-    if (!isUnavailable) {
-      el.querySelector('img')?.addEventListener('pointerdown', (e) => startDrag(e, item));
-    }
+    // arrasta pro carrinho mesmo sem estoque — lá também aparece como indisponível
+    el.querySelector('[data-thumb-img]')?.addEventListener('pointerdown', (e) => startDrag(e, item));
+
+    const stockInput = el.querySelector('[data-stock-input]');
+    stockInput?.addEventListener('input', () => {
+      const raw = stockInput.value.trim();
+      item.stock = raw === '' ? null : Math.max(0, parseInt(raw, 10) || 0);
+      updateCardAvailability(el, item);
+    });
+    stockInput?.addEventListener('change', async () => {
+      await DB.putItem(item);
+    });
   });
+}
+
+// disponibilidade de estoque — compartilhado entre a biblioteca e os itens já postos no carrinho
+function isItemUnavailable(item) {
+  return item.stock === 0 || item.stock === null || item.stock === false;
+}
+function unavailableTagHTML(item) {
+  return isItemUnavailable(item) ? `
+    <div class="absolute inset-0 flex items-center justify-center pointer-events-none" data-unavailable-tag>
+      <span class="text-[9px] font-bold uppercase tracking-wide text-paper text-center">Indisponível</span>
+    </div>` : '';
+}
+function thumbImgClass(item, extra) {
+  return `w-full h-auto block${isItemUnavailable(item) ? ' brightness-[0.45]' : ''}${extra ? ' ' + extra : ''}`;
+}
+
+// atualiza só a marca visual de indisponível (sem re-renderizar o card todo, senão o
+// campo de estoque perde o foco enquanto a pessoa ainda está digitando)
+function updateCardAvailability(card, item) {
+  const unavailable = isItemUnavailable(item);
+  const img = card.querySelector('[data-thumb-img]');
+  img?.classList.toggle('brightness-[0.45]', unavailable);
+  const wrap = card.querySelector('[data-thumb-wrap]');
+  const existingTag = wrap?.querySelector('[data-unavailable-tag]');
+  if (unavailable && !existingTag) {
+    wrap?.insertAdjacentHTML('afterbegin', unavailableTagHTML(item));
+  } else if (!unavailable && existingTag) {
+    existingTag.remove();
+  }
 }
 
 function itemCardHTML(item) {
   const sub = item.sigla ? `<div class="text-[9.5px] text-text-dim mt-0.5 truncate">${escapeHTML(item.sigla)}</div>` : '';
-  const unavailable = item.stock === 0 || item.stock === null || item.stock === false;
-  const unavailableTag = unavailable ? `
-    <div class="absolute inset-0 flex items-center justify-center pointer-events-none">
-      <span class="text-[9px] font-bold uppercase tracking-wide text-paper text-center">Indisponível</span>
-    </div>` : '';
   return `
     <div class="relative bg-surface border border-border rounded-lg overflow-hidden flex flex-col" data-item-id="${item.id}">
-      <div class="relative bg-surface-2">
-        <img loading="lazy" class="w-full h-auto block${unavailable ? ' brightness-[0.45] cursor-not-allowed' : ' cursor-grab active:cursor-grabbing touch-none'}" src="${urlFor(item, 'thumb')}" alt="">
-        ${unavailableTag}
+      <input type="number" min="0" step="1" inputmode="numeric" placeholder="Estoque" value="${item.stock ?? ''}"
+        class="w-full text-center text-[10px] bg-surface-2 text-text border-b border-border py-1 focus:outline-none focus:bg-surface-3" data-stock-input>
+      <div class="relative bg-surface-2" data-thumb-wrap>
+        <img loading="lazy" class="${thumbImgClass(item, 'cursor-grab active:cursor-grabbing touch-none')}" data-thumb-img src="${urlFor(item, 'thumb')}" alt="">
+        ${unavailableTagHTML(item)}
+        <button class="absolute top-1 right-1 w-5 h-5 rounded-full bg-bg/70 text-paper flex items-center justify-center text-[13px] leading-none active:bg-bg" data-menu-btn aria-label="Opções">⋮</button>
       </div>
-      <button class="absolute top-1 right-1 w-5 h-5 rounded-full bg-bg/70 text-paper flex items-center justify-center text-[13px] leading-none active:bg-bg" data-menu-btn aria-label="Opções">⋮</button>
       <div class="px-1.5 py-1">
         <div class="text-[10.5px] font-semibold leading-tight line-clamp-2">${escapeHTML(item.title)}</div>
         ${sub}
@@ -420,18 +476,6 @@ function onDragMove(e) {
   dragState.ghost.style.left = (e.clientX - 35) + 'px';
   dragState.ghost.style.top = (e.clientY - 35) + 'px';
   updateDropHighlight(e.clientX, e.clientY);
-  autoScrollCartPanel(e.clientY);
-}
-
-// rola o carrinho automaticamente quando o arraste chega perto da borda de cima/baixo —
-// sem isso, slots fora da área visível (carrinho ficou mais alto que a tela) são inalcançáveis.
-function autoScrollCartPanel(y) {
-  const scroller = document.getElementById('cart-scroll');
-  if (!scroller) return;
-  const rect = scroller.getBoundingClientRect();
-  const edge = 44;
-  if (y < rect.top + edge) scroller.scrollTop -= 14;
-  else if (y > rect.bottom - edge) scroller.scrollTop += 14;
 }
 
 function updateDropHighlight(x, y) {
@@ -875,6 +919,12 @@ importInputHidden.addEventListener('change', async () => {
 // BOOT
 // ============================================================
 render();
+
+let resizeDebounce;
+window.addEventListener('resize', () => {
+  clearTimeout(resizeDebounce);
+  resizeDebounce = setTimeout(fitCartRackToPanel, 120);
+});
 
 // Em localhost (dev), nunca registra o service worker — e desregistra qualquer um já
 // instalado ali antes — pra nunca mais brigar com cache velho enquanto testamos.
