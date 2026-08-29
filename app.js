@@ -192,11 +192,11 @@ function renderToolbar() {
           <span class="font-mono uppercase tracking-wide text-[12px] font-bold text-bg bg-paper px-2.5 py-1 rounded">${cat.label}</span>
           <span class="text-[13px] text-text-dim">${items.length} ${items.length === 1 ? 'item' : 'itens'}</span>
         </div>
-        <div class="grid grid-cols-[repeat(auto-fill,minmax(130px,1fr))] gap-2.5">
+        <div class="grid grid-cols-[repeat(auto-fill,minmax(96px,1fr))] gap-2">
           ${cards}
-          <div class="add-tile aspect-[3/4] border-[1.5px] border-dashed border-border rounded-lg flex flex-col items-center justify-center gap-1.5 text-text-dim cursor-pointer active:bg-surface" data-add-cat="${cat.id}">
-            <div class="text-2xl font-light leading-none text-accent">+</div>
-            <span class="text-[11.5px] font-semibold">Adicionar</span>
+          <div class="add-tile aspect-[3/4] border-[1.5px] border-dashed border-border rounded-lg flex flex-col items-center justify-center gap-1 text-text-dim cursor-pointer active:bg-surface" data-add-cat="${cat.id}">
+            <div class="text-lg font-light leading-none text-accent">+</div>
+            <span class="text-[10px] font-semibold">Adicionar</span>
           </div>
         </div>
       </section>`;
@@ -209,15 +209,15 @@ function renderToolbar() {
 
 function itemCardHTML(item) {
   const badge = item.fileType === 'pdf'
-    ? '<span class="absolute top-1.5 right-1.5 bg-accent text-paper text-[9px] font-bold tracking-wide px-1.5 py-0.5 rounded font-mono">PDF</span>'
+    ? '<span class="absolute top-1 right-1 bg-accent text-paper text-[8px] font-bold tracking-wide px-1 py-0.5 rounded font-mono">PDF</span>'
     : '';
-  const sub = item.subtitle ? `<div class="text-[11px] text-text-dim mt-0.5 truncate">${escapeHTML(item.subtitle)}</div>` : '';
+  const sub = item.subtitle ? `<div class="text-[9.5px] text-text-dim mt-0.5 truncate">${escapeHTML(item.subtitle)}</div>` : '';
   return `
     <div class="relative bg-surface border border-border rounded-lg overflow-hidden flex flex-col">
       <div class="aspect-[3/4] bg-surface-2 overflow-hidden"><img loading="lazy" class="w-full h-full object-cover block" src="${urlFor(item, 'thumb')}" alt=""></div>
       ${badge}
-      <div class="px-2 py-1.5">
-        <div class="text-[12.5px] font-semibold leading-tight line-clamp-2">${escapeHTML(item.title)}</div>
+      <div class="px-1.5 py-1">
+        <div class="text-[10.5px] font-semibold leading-tight line-clamp-2">${escapeHTML(item.title)}</div>
         ${sub}
       </div>
     </div>`;
