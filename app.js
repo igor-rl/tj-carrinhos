@@ -771,8 +771,15 @@ importInputHidden.addEventListener('change', async () => {
 // ============================================================
 render();
 
+// Em localhost (dev), nunca registra o service worker — e desregistra qualquer um já
+// instalado ali antes — pra nunca mais brigar com cache velho enquanto testamos.
+const isLocalDev = ['localhost', '127.0.0.1'].includes(location.hostname);
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./service-worker.js').catch(() => {});
-  });
+  if (isLocalDev) {
+    navigator.serviceWorker.getRegistrations().then(regs => regs.forEach(r => r.unregister()));
+  } else {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('./service-worker.js').catch(() => {});
+    });
+  }
 }
