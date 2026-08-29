@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#15140F">
+<title>Carrinho de Publicações</title>
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div id="app">
+
+  <!-- Barra superior -->
+  <header class="topbar">
+    <div class="topbar-tag">CP</div>
+    <h1>Carrinho de Publicações</h1>
+    <nav class="tabs" id="tabs">
+      <button class="tab active" data-view="biblioteca">Biblioteca</button>
+      <button class="tab" data-view="carrinhos">Carrinhos</button>
+      <button class="tab" data-view="backup">Backup</button>
+    </nav>
+  </header>
+
+  <main id="view-root"></main>
+
+</div>
+
+<!-- Modal genérico (seletor de item da biblioteca, formulário de novo item, etc.) -->
+<div id="modal-overlay" class="modal-overlay hidden">
+  <div id="modal-box" class="modal-box"></div>
+</div>
+
+<div id="toast" class="toast hidden"></div>
+
+<input type="file" id="file-input-hidden" accept="image/*,application/pdf" style="display:none">
+<input type="file" id="import-input-hidden" accept=".zip" style="display:none">
+
+<script src="vendor/pdf.min.js"></script>
+<script src="vendor/jszip.min.js"></script>
+<script src="db.js"></script>
+<script src="files.js"></script>
+<script src="backup.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
