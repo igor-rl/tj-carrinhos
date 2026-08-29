@@ -20,11 +20,12 @@ async function exportBackup() {
     filesFolder.file(filePath, item.fileBlob);
     itemsMeta.push({
       id: item.id,
+      type: item.type || (item.category === 'banners' ? 'banner' : 'publicacao'),
       category: item.category,
       title: item.title,
       sigla: item.sigla || '',
       stock: item.stock ?? null,
-      size: item.category === 'banners' ? undefined : (item.size ?? 1),
+      size: item.type === 'banner' ? undefined : (item.size ?? 1),
       thumbW: item.thumbW,
       thumbH: item.thumbH,
       coverRightHalf: item.coverRightHalf || false,
@@ -37,7 +38,7 @@ async function exportBackup() {
   }
 
   zip.file('data.json', JSON.stringify({
-    version: 4,
+    version: 5,
     exportedAt: new Date().toISOString(),
     items: itemsMeta,
     carts
@@ -72,13 +73,16 @@ async function importBackup(file) {
     const fileEntry = zip.file(`files/${meta.filePath}`);
     const thumbBlob = thumbEntry ? await thumbEntry.async('blob') : null;
     const fileBlob = fileEntry ? await fileEntry.async('blob') : null;
+    // backups antigos (pré-v8) não traziam "type" — infere pelo category=="banners" de então
+    const type = meta.type || (meta.category === 'banners' ? 'banner' : 'publicacao');
     await DB.putItem({
       id: meta.id,
-      category: meta.category,
+      type,
+      category: type === 'banner' && meta.category === 'banners' ? '' : meta.category,
       title: meta.title,
       sigla: meta.sigla ?? meta.subtitle ?? '', // backups antigos (pré-v4) traziam "subtitle"
       stock: meta.stock ?? undefined,
-      size: meta.category === 'banners' ? undefined : (meta.size ?? 1),
+      size: type === 'banner' ? undefined : (meta.size ?? 1),
       thumbW: meta.thumbW,
       thumbH: meta.thumbH,
       coverRightHalf: meta.coverRightHalf || false,

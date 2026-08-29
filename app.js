@@ -288,24 +288,25 @@ function sectionHeadHTML(key, label, count) {
     </button>`;
 }
 
-function renderToolbar() {
-  const banners = state.items.filter(i => i.category === 'banners').sort(bySigla);
-  const pubItems = state.items.filter(i => i.category !== 'banners');
-  const uncategorized = pubItems.filter(i => !(i.category || '').trim()).sort(bySigla);
-
-  const categoryMap = new Map();
-  for (const item of pubItems) {
+// separa uma lista de itens em "sem categoria" + mapa categoria -> itens (ambos ordenados por sigla)
+function groupByCategory(items) {
+  const uncategorized = items.filter(i => !(i.category || '').trim()).sort(bySigla);
+  const map = new Map();
+  for (const item of items) {
     const cat = (item.category || '').trim();
     if (!cat) continue;
-    if (!categoryMap.has(cat)) categoryMap.set(cat, []);
-    categoryMap.get(cat).push(item);
+    if (!map.has(cat)) map.set(cat, []);
+    map.get(cat).push(item);
   }
-  const categoryNames = [...categoryMap.keys()].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  const names = [...map.keys()].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  return { uncategorized, map, names };
+}
 
-  const categorySectionsHTML = categoryNames.map(cat => {
-    const key = `cat:${cat}`;
+function categorySectionsHTML(groups, keyPrefix) {
+  return groups.names.map(cat => {
+    const key = `${keyPrefix}:${cat}`;
     const collapsed = state.collapsedSections.has(key);
-    const items = categoryMap.get(cat).sort(bySigla);
+    const items = groups.map.get(cat).sort(bySigla);
     return `
       <div class="mb-5">
         <button class="w-full flex items-baseline gap-2 mb-2.5 px-2.5 py-2 rounded-md bg-surface" data-toggle-section="${escapeHTML(key)}">
@@ -316,15 +317,23 @@ function renderToolbar() {
         ${collapsed ? '' : itemsGridHTML(items)}
       </div>`;
   }).join('');
+}
+
+function renderToolbar() {
+  const bannerItems = state.items.filter(i => i.type === 'banner').sort(bySigla);
+  const pubItems = state.items.filter(i => i.type !== 'banner');
+
+  const bannerGroups = groupByCategory(bannerItems);
+  const pubGroups = groupByCategory(pubItems);
 
   toolbar.innerHTML = `
     <section class="mb-7">
-      ${sectionHeadHTML('banners', 'Banners', banners.length)}
-      ${state.collapsedSections.has('banners') ? '' : itemsGridHTML(banners)}
+      ${sectionHeadHTML('banners', 'Banners', bannerItems.length)}
+      ${state.collapsedSections.has('banners') ? '' : `${itemsGridHTML(bannerGroups.uncategorized)}${categorySectionsHTML(bannerGroups, 'bcat')}`}
     </section>
     <section class="mb-7">
       ${sectionHeadHTML('publicacoes', PUBLICACOES_LABEL, pubItems.length)}
-      ${state.collapsedSections.has('publicacoes') ? '' : `${itemsGridHTML(uncategorized)}${categorySectionsHTML}`}
+      ${state.collapsedSections.has('publicacoes') ? '' : `${itemsGridHTML(pubGroups.uncategorized)}${categorySectionsHTML(pubGroups, 'cat')}`}
     </section>
   `;
 
@@ -381,7 +390,7 @@ let dragState = null;
 function startDrag(e, item, source) {
   e.preventDefault();
   if (source) e.stopPropagation();
-  const isBanner = item.category === 'banners';
+  const isBanner = item.type === 'banner';
   const ghost = document.createElement('img');
   ghost.src = urlFor(item, 'thumb');
   ghost.className = 'fixed pointer-events-none z-[200] w-[70px] h-auto rounded-md shadow-[0_6px_20px_rgba(0,0,0,0.4)] opacity-90';
@@ -562,7 +571,7 @@ function openItemContextMenu(e, item) {
 
 function openEditItemModal(item) {
   showNewItemForm({
-    category: item.category,
+    type: item.type,
     thumbBlob: item.thumbBlob,
     fileBlob: item.fileBlob,
     fileType: item.fileType,
@@ -593,22 +602,22 @@ const BANNER_MIN_ASPECT = 1.8; // altura/largura mínima pra contar como banner 
 
 // lembra a última "largura no andar" e o checkbox "metade direita" usados — ajuda a
 // cadastrar vários itens parecidos em sequência sem repetir os mesmos ajustes.
-function getLastItemDefaults() {
+function getLastItemDefaults(type) {
   try {
     return {
       size: Number(localStorage.getItem('cp:lastSize')) || 1,
       coverRightHalf: localStorage.getItem('cp:lastCoverRightHalf') === '1',
-      category: localStorage.getItem('cp:lastCategory') || ''
+      category: localStorage.getItem(`cp:lastCategory:${type}`) || ''
     };
   } catch {
     return { size: 1, coverRightHalf: false, category: '' };
   }
 }
-function saveLastItemDefaults(size, coverRightHalf, category) {
+function saveLastItemDefaults(type, size, coverRightHalf, category) {
   try {
     localStorage.setItem('cp:lastSize', String(size));
-    localStorage.setItem('cp:lastCoverRightHalf', coverRightHalf ? '1' : '0');
-    if (category !== undefined) localStorage.setItem('cp:lastCategory', category);
+    if (coverRightHalf !== undefined) localStorage.setItem('cp:lastCoverRightHalf', coverRightHalf ? '1' : '0');
+    if (category !== undefined) localStorage.setItem(`cp:lastCategory:${type}`, category);
   } catch { /* localStorage indisponível — sem problema, é só conveniência */ }
 }
 
@@ -632,22 +641,22 @@ fileInputHidden.addEventListener('change', async () => {
     <div class="flex items-center gap-2.5 text-text-dim text-[13px] py-2.5"><div class="spinner"></div> Gerando miniatura da capa…</div>
   `);
   try {
-    const lastDefaults = getLastItemDefaults();
     // gera sempre a partir da folha inteira: é essa proporção que decide banner x publicação
     const { thumbBlob: fullThumbBlob, fileBlob, fileType, fileName } = await processUpload(file, false);
     const fullDims = await getThumbDims(fullThumbBlob);
-    const category = (fullDims.h / fullDims.w >= BANNER_MIN_ASPECT) ? 'banners' : '';
+    const type = (fullDims.h / fullDims.w >= BANNER_MIN_ASPECT) ? 'banner' : 'publicacao';
+    const lastDefaults = getLastItemDefaults(type);
 
-    // só depois de decidir a categoria é que aplicamos, como prévia inicial, o último
-    // ajuste de "capa é a metade direita" lembrado
+    // só depois de decidir o tipo é que aplicamos, como prévia inicial, o último
+    // ajuste de "capa é a metade direita" lembrado (só vale pra publicações)
     let thumbBlob = fullThumbBlob, w = fullDims.w, h = fullDims.h;
-    if (lastDefaults.coverRightHalf) {
+    if (type !== 'banner' && lastDefaults.coverRightHalf) {
       thumbBlob = await cropBlobRightHalf(fullThumbBlob);
       ({ w, h } = await getThumbDims(thumbBlob));
     }
 
     const suggestedSigla = fileName.replace(/\.[a-z0-9]+$/i, '');
-    showNewItemForm({ category, thumbBlob, fileBlob, fileType, fileName, suggestedSigla, thumbW: w, thumbH: h, lastDefaults });
+    showNewItemForm({ type, thumbBlob, fileBlob, fileType, fileName, suggestedSigla, thumbW: w, thumbH: h, lastDefaults });
   } catch (err) {
     console.error(err);
     closeModal();
@@ -655,25 +664,27 @@ fileInputHidden.addEventListener('change', async () => {
   }
 });
 
-function showNewItemForm({ category, thumbBlob, fileBlob, fileType, fileName, suggestedSigla, thumbW, thumbH, existingItem, lastDefaults }) {
+function showNewItemForm({ type, thumbBlob, fileBlob, fileType, fileName, suggestedSigla, thumbW, thumbH, existingItem, lastDefaults }) {
   const isEdit = !!existingItem;
-  const isBanner = category === 'banners';
-  const defaultSize = existingItem?.size ?? lastDefaults?.size ?? 1;
-  const defaultCoverRightHalf = existingItem ? !!existingItem.coverRightHalf : !!lastDefaults?.coverRightHalf;
-  const defaultCategory = existingItem?.category || category || lastDefaults?.category || '';
+  const finalType = existingItem?.type ?? type;
+  const isBanner = finalType === 'banner';
+  const defaults = lastDefaults ?? getLastItemDefaults(finalType);
+  const defaultSize = existingItem?.size ?? defaults.size ?? 1;
+  const defaultCoverRightHalf = existingItem ? !!existingItem.coverRightHalf : !!defaults.coverRightHalf;
+  const defaultCategory = existingItem?.category || defaults.category || '';
   let previewUrl = URL.createObjectURL(thumbBlob);
 
-  const categoryOptions = isBanner ? [] : [...new Set(
+  const categoryOptions = [...new Set(
     state.items
-      .filter(i => i.category && i.category !== 'banners')
+      .filter(i => i.type === finalType && i.category)
       .map(i => i.category.trim())
       .filter(Boolean)
   )].sort((a, b) => a.localeCompare(b, 'pt-BR'));
 
-  const categoryFieldHTML = isBanner ? '' : `
+  const categoryFieldHTML = `
     <div class="mb-3.5">
       <label class="field-label">Categoria (opcional)</label>
-      <input type="text" id="f-category" class="field-input" list="category-options" placeholder="Ex: Folhetos — deixe em branco pra ficar em Publicações" value="${escapeHTML(defaultCategory)}">
+      <input type="text" id="f-category" class="field-input" list="category-options" placeholder="${isBanner ? 'Ex: Guerra — deixe em branco pra ficar sem categoria' : 'Ex: Folhetos — deixe em branco pra ficar em Publicações'}" value="${escapeHTML(defaultCategory)}">
       <datalist id="category-options">${categoryOptions.map(c => `<option value="${escapeHTML(c)}">`).join('')}</datalist>
     </div>`;
 
@@ -691,10 +702,11 @@ function showNewItemForm({ category, thumbBlob, fileBlob, fileType, fileName, su
     <div class="flex gap-3.5 mb-1.5">
       <div class="w-[90px] shrink-0">
         <img id="f-cover-preview" src="${previewUrl}" class="w-full h-auto rounded-lg border border-border">
+        ${isBanner ? '' : `
         <label class="flex items-start gap-1.5 mt-2">
           <input type="checkbox" id="f-cover-right-half" class="mt-0.5" ${defaultCoverRightHalf ? 'checked' : ''}>
           <span class="text-[10.5px] text-text-dim leading-tight">Capa é a metade direita da folha</span>
-        </label>
+        </label>`}
       </div>
       <div class="flex-1 min-w-0">
         <div class="mb-3.5">
@@ -726,7 +738,7 @@ function showNewItemForm({ category, thumbBlob, fileBlob, fileType, fileName, su
   let currentThumbW = thumbW ?? existingItem?.thumbW;
   let currentThumbH = thumbH ?? existingItem?.thumbH;
 
-  document.getElementById('f-cover-right-half').addEventListener('change', async (e) => {
+  document.getElementById('f-cover-right-half')?.addEventListener('change', async (e) => {
     const checkbox = e.target;
     checkbox.disabled = true;
     try {
@@ -750,20 +762,20 @@ function showNewItemForm({ category, thumbBlob, fileBlob, fileType, fileName, su
     const title = document.getElementById('f-title').value.trim();
     if (!title) { toast('Dê um título pro item.'); return; }
     const sigla = document.getElementById('f-sigla').value.trim();
-    const finalCategory = isBanner ? 'banners' : document.getElementById('f-category').value.trim();
+    const finalCategory = document.getElementById('f-category').value.trim();
     const stockRaw = document.getElementById('f-stock').value.trim();
     // em branco: item novo começa em 0; editar sem mexer no campo preserva "estoque não
     // rastreado" (undefined) em vez de zerar o item sem querer (isso deixava tudo "Indisponível").
     const stock = stockRaw === '' ? (isEdit ? existingItem.stock : 0) : Math.max(0, parseInt(stockRaw, 10) || 0);
-    const coverRightHalf = document.getElementById('f-cover-right-half').checked;
+    const coverRightHalf = document.getElementById('f-cover-right-half')?.checked ?? false;
     const item = {
       id: existingItem?.id || uid(),
-      category: finalCategory, title, sigla, stock, fileType, fileName, fileBlob,
+      type: finalType, category: finalCategory, title, sigla, stock, fileType, fileName, fileBlob,
       thumbBlob: currentThumbBlob, thumbW: currentThumbW, thumbH: currentThumbH, coverRightHalf,
       createdAt: existingItem?.createdAt || Date.now()
     };
     if (!isBanner) item.size = Number(document.getElementById('f-size').value);
-    saveLastItemDefaults(item.size ?? defaultSize, coverRightHalf, isBanner ? undefined : finalCategory);
+    saveLastItemDefaults(finalType, item.size ?? defaultSize, isBanner ? undefined : coverRightHalf, finalCategory);
     await DB.putItem(item);
     closeModal();
     toast(isEdit ? 'Item atualizado.' : 'Item adicionado à biblioteca.');

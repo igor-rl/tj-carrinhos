@@ -1,6 +1,6 @@
 // db.js — camada de persistência local (IndexedDB). Tudo funciona offline.
 const DB_NAME = 'carrinho-publicacoes';
-const DB_VERSION = 7;
+const DB_VERSION = 8;
 
 let dbPromise = null;
 
@@ -47,7 +47,10 @@ function openDB() {
       //  v3 -> v4: campo livre "subtitle" (observação) virou "sigla" (extraída do nome do arquivo).
       //  v4 -> v5: categorias fixas viraram nomes de exibição livres; itens (exceto banners)
       //            ganham "size" (largura em quartos de andar) e passam a poder ter "stock".
-      if (e.oldVersion > 0 && e.oldVersion < 5) {
+      //  v7 -> v8: "category" deixa de ser o sinalizador de tipo — ganha "type" ('banner' ou
+      //            'publicacao') pra isso, e banners também podem ter categoria livre (a
+      //            categoria antiga, sempre o texto fixo "banners", não servia pra nada e é zerada).
+      if (e.oldVersion > 0 && e.oldVersion < 8) {
         const CATEGORY_RELABEL = {
           folhetos: 'Folhetos', brochuras: 'Brochuras', convites: 'Convites',
           livros: 'Livros', sentinela: 'A Sentinela', despertai: 'Despertai!'
@@ -76,6 +79,11 @@ function openDB() {
               item.size = 1;
               changed = true;
             }
+          }
+          if (e.oldVersion < 8 && !item.type) {
+            item.type = item.category === 'banners' ? 'banner' : 'publicacao';
+            if (item.type === 'banner') item.category = '';
+            changed = true;
           }
           if (changed) cursor.update(item);
           cursor.continue();
