@@ -23,6 +23,8 @@ async function exportBackup() {
       category: item.category,
       title: item.title,
       sigla: item.sigla || '',
+      stock: item.stock ?? null,
+      size: item.category === 'banners' ? undefined : (item.size ?? 1),
       fileType: item.fileType,
       fileName: item.fileName,
       createdAt: item.createdAt,
@@ -32,7 +34,7 @@ async function exportBackup() {
   }
 
   zip.file('data.json', JSON.stringify({
-    version: 3,
+    version: 4,
     exportedAt: new Date().toISOString(),
     items: itemsMeta,
     carts
@@ -72,6 +74,8 @@ async function importBackup(file) {
       category: meta.category,
       title: meta.title,
       sigla: meta.sigla ?? meta.subtitle ?? '', // backups antigos (pré-v4) traziam "subtitle"
+      stock: meta.stock ?? undefined,
+      size: meta.category === 'banners' ? undefined : (meta.size ?? 1),
       fileType: meta.fileType,
       fileName: meta.fileName,
       createdAt: meta.createdAt,

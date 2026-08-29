@@ -1,14 +1,8 @@
-// app.js — orquestra a tela única: carrinho (esquerda) + biblioteca por categorias (direita).
+// app.js — orquestra a tela única: carrinho (esquerda) + biblioteca (direita).
+// Biblioteca tem só dois grupos fixos: Banners e Publicações. Dentro de Publicações,
+// categorias são livres — criadas na hora ao digitar um nome novo no formulário do item.
 
-const CATEGORIES = [
-  { id: 'banners', label: 'Banners' },
-  { id: 'folhetos', label: 'Folhetos' },
-  { id: 'brochuras', label: 'Brochuras' },
-  { id: 'convites', label: 'Convites' },
-  { id: 'livros', label: 'Livros' },
-  { id: 'sentinela', label: 'A Sentinela' },
-  { id: 'despertai', label: 'Despertai!' }
-];
+const PUBLICACOES_LABEL = 'Publicações';
 
 const state = {
   items: [],
@@ -181,26 +175,64 @@ async function deleteCart(cart) {
 // ============================================================
 // BIBLIOTECA (direita) — por enquanto só exibição, sem função ao clicar
 // ============================================================
+function byTitle(a, b) { return a.title.localeCompare(b.title, 'pt-BR'); }
+
+function itemsGridHTML(items, addCategoryValue) {
+  return `
+    <div class="grid grid-cols-[repeat(auto-fill,minmax(96px,1fr))] gap-2">
+      ${items.map(itemCardHTML).join('')}
+      <div class="add-tile aspect-[3/4] border-[1.5px] border-dashed border-border rounded-lg flex flex-col items-center justify-center gap-1 text-text-dim cursor-pointer active:bg-surface" data-add-cat="${escapeHTML(addCategoryValue)}">
+        <div class="text-lg font-light leading-none text-accent">+</div>
+        <span class="text-[10px] font-semibold">Adicionar</span>
+      </div>
+    </div>`;
+}
+
+function sectionHeadHTML(label, count) {
+  return `
+    <div class="flex items-baseline gap-2.5 mb-3">
+      <span class="font-mono uppercase tracking-wide text-[12px] font-bold text-bg bg-paper px-2.5 py-1 rounded">${escapeHTML(label)}</span>
+      <span class="text-[13px] text-text-dim">${count} ${count === 1 ? 'item' : 'itens'}</span>
+    </div>`;
+}
+
 function renderToolbar() {
-  toolbar.innerHTML = CATEGORIES.map(cat => {
-    const items = state.items.filter(i => i.category === cat.id)
-      .sort((a, b) => a.title.localeCompare(b.title, 'pt-BR'));
-    const cards = items.map(itemCardHTML).join('');
+  const banners = state.items.filter(i => i.category === 'banners').sort(byTitle);
+  const pubItems = state.items.filter(i => i.category !== 'banners');
+  const uncategorized = pubItems.filter(i => !(i.category || '').trim()).sort(byTitle);
+
+  const categoryMap = new Map();
+  for (const item of pubItems) {
+    const cat = (item.category || '').trim();
+    if (!cat) continue;
+    if (!categoryMap.has(cat)) categoryMap.set(cat, []);
+    categoryMap.get(cat).push(item);
+  }
+  const categoryNames = [...categoryMap.keys()].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+
+  const categorySectionsHTML = categoryNames.map(cat => {
+    const items = categoryMap.get(cat).sort(byTitle);
     return `
-      <section class="mb-7">
-        <div class="flex items-baseline gap-2.5 mb-3">
-          <span class="font-mono uppercase tracking-wide text-[12px] font-bold text-bg bg-paper px-2.5 py-1 rounded">${cat.label}</span>
-          <span class="text-[13px] text-text-dim">${items.length} ${items.length === 1 ? 'item' : 'itens'}</span>
+      <div class="mb-5">
+        <div class="flex items-baseline gap-2 mb-2.5">
+          <span class="text-[12.5px] font-bold text-text">${escapeHTML(cat)}</span>
+          <span class="text-[11.5px] text-text-dim">${items.length} ${items.length === 1 ? 'item' : 'itens'}</span>
         </div>
-        <div class="grid grid-cols-[repeat(auto-fill,minmax(96px,1fr))] gap-2">
-          ${cards}
-          <div class="add-tile aspect-[3/4] border-[1.5px] border-dashed border-border rounded-lg flex flex-col items-center justify-center gap-1 text-text-dim cursor-pointer active:bg-surface" data-add-cat="${cat.id}">
-            <div class="text-lg font-light leading-none text-accent">+</div>
-            <span class="text-[10px] font-semibold">Adicionar</span>
-          </div>
-        </div>
-      </section>`;
+        ${itemsGridHTML(items, cat)}
+      </div>`;
   }).join('');
+
+  toolbar.innerHTML = `
+    <section class="mb-7">
+      ${sectionHeadHTML('Banners', banners.length)}
+      ${itemsGridHTML(banners, 'banners')}
+    </section>
+    <section class="mb-7">
+      ${sectionHeadHTML(PUBLICACOES_LABEL, pubItems.length)}
+      ${itemsGridHTML(uncategorized, '')}
+      ${categorySectionsHTML}
+    </section>
+  `;
 
   toolbar.querySelectorAll('.add-tile[data-add-cat]').forEach(el => {
     el.addEventListener('click', () => startUpload(el.dataset.addCat));
@@ -216,9 +248,17 @@ function itemCardHTML(item) {
     ? '<span class="absolute top-1 right-1 bg-accent text-paper text-[8px] font-bold tracking-wide px-1 py-0.5 rounded font-mono">PDF</span>'
     : '';
   const sub = item.sigla ? `<div class="text-[9.5px] text-text-dim mt-0.5 truncate">${escapeHTML(item.sigla)}</div>` : '';
+  const unavailable = item.stock === 0;
+  const unavailableOverlay = unavailable ? `
+    <div class="absolute inset-0 flex items-center justify-center bg-bg/70">
+      <span class="text-[9px] font-bold uppercase tracking-wide text-danger bg-surface border border-danger px-1.5 py-0.5 rounded">Indisponível</span>
+    </div>` : '';
   return `
     <div class="relative bg-surface border border-border rounded-lg overflow-hidden flex flex-col" data-item-id="${item.id}">
-      <div class="bg-surface-2"><img loading="lazy" class="w-full h-auto block" src="${urlFor(item, 'thumb')}" alt=""></div>
+      <div class="relative bg-surface-2">
+        <img loading="lazy" class="w-full h-auto block${unavailable ? ' opacity-40' : ''}" src="${urlFor(item, 'thumb')}" alt="">
+        ${unavailableOverlay}
+      </div>
       ${badge}
       <div class="px-1.5 py-1">
         <div class="text-[10.5px] font-semibold leading-tight line-clamp-2">${escapeHTML(item.title)}</div>
@@ -333,11 +373,33 @@ fileInputHidden.addEventListener('change', async () => {
 
 function showNewItemForm({ category, thumbBlob, fileBlob, fileType, fileName, suggestedSigla, existingItem }) {
   const isEdit = !!existingItem;
-  const catLabel = CATEGORIES.find(c => c.id === category)?.label || category;
+  const isBanner = category === 'banners';
   const previewUrl = URL.createObjectURL(thumbBlob);
 
+  const categoryOptions = isBanner ? [] : [...new Set(
+    state.items
+      .filter(i => i.category && i.category !== 'banners')
+      .map(i => i.category.trim())
+      .filter(Boolean)
+  )].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+
+  const categoryFieldHTML = isBanner ? '' : `
+    <div class="mb-3.5">
+      <label class="field-label">Categoria (opcional)</label>
+      <input type="text" id="f-category" class="field-input" list="category-options" placeholder="Ex: Folhetos — deixe em branco pra ficar em Publicações" value="${escapeHTML(existingItem?.category || category || '')}">
+      <datalist id="category-options">${categoryOptions.map(c => `<option value="${escapeHTML(c)}">`).join('')}</datalist>
+    </div>`;
+
+  const sizeFieldHTML = isBanner ? '' : `
+    <div class="mb-3.5">
+      <label class="field-label">Tamanho no andar</label>
+      <select id="f-size" class="field-input">
+        ${[1, 2, 3, 4].map(n => `<option value="${n}" ${(existingItem?.size ?? 1) === n ? 'selected' : ''}>${n}/4</option>`).join('')}
+      </select>
+    </div>`;
+
   openModal(`
-    <h2 class="text-[17px] font-bold m-0 mb-4">${isEdit ? 'Editar item' : 'Novo item'} · ${catLabel}</h2>
+    <h2 class="text-[17px] font-bold m-0 mb-4">${isEdit ? 'Editar' : 'Novo'} ${isBanner ? 'banner' : 'item'}</h2>
     <div class="flex gap-3.5 mb-1.5">
       <img src="${previewUrl}" class="w-[90px] h-auto self-start rounded-lg border border-border shrink-0">
       <div class="flex-1 min-w-0">
@@ -349,6 +411,12 @@ function showNewItemForm({ category, thumbBlob, fileBlob, fileType, fileName, su
           <label class="field-label">Sigla</label>
           <input type="text" id="f-sigla" class="field-input" placeholder="Ex: fg_2020" value="${escapeHTML(existingItem?.sigla ?? suggestedSigla ?? '')}">
         </div>
+        ${categoryFieldHTML}
+        <div class="mb-3.5">
+          <label class="field-label">Estoque</label>
+          <input type="number" id="f-stock" class="field-input" min="0" step="1" placeholder="0" value="${existingItem?.stock ?? ''}">
+        </div>
+        ${sizeFieldHTML}
       </div>
     </div>
     <div class="flex gap-2.5 mt-4">
@@ -362,11 +430,15 @@ function showNewItemForm({ category, thumbBlob, fileBlob, fileType, fileName, su
     const title = document.getElementById('f-title').value.trim();
     if (!title) { toast('Dê um título pro item.'); return; }
     const sigla = document.getElementById('f-sigla').value.trim();
+    const finalCategory = isBanner ? 'banners' : document.getElementById('f-category').value.trim();
+    const stockRaw = document.getElementById('f-stock').value.trim();
+    const stock = stockRaw === '' ? 0 : Math.max(0, parseInt(stockRaw, 10) || 0);
     const item = {
       id: existingItem?.id || uid(),
-      category, title, sigla, fileType, fileName, thumbBlob, fileBlob,
+      category: finalCategory, title, sigla, stock, fileType, fileName, thumbBlob, fileBlob,
       createdAt: existingItem?.createdAt || Date.now()
     };
+    if (!isBanner) item.size = Number(document.getElementById('f-size').value);
     await DB.putItem(item);
     closeModal();
     toast(isEdit ? 'Item atualizado.' : 'Item adicionado à biblioteca.');

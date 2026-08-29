@@ -1,6 +1,6 @@
 // db.js — camada de persistência local (IndexedDB). Tudo funciona offline.
 const DB_NAME = 'carrinho-publicacoes';
-const DB_VERSION = 4;
+const DB_VERSION = 5;
 
 let dbPromise = null;
 
@@ -45,7 +45,13 @@ function openDB() {
       // Migrações de "items" que dependem de percorrer os registros (uma única passada de cursor):
       //  v2 -> v3: categoria única "revistas" virou duas: "sentinela" e "despertai".
       //  v3 -> v4: campo livre "subtitle" (observação) virou "sigla" (extraída do nome do arquivo).
-      if (e.oldVersion > 0 && e.oldVersion < 4) {
+      //  v4 -> v5: categorias fixas viraram nomes de exibição livres; itens (exceto banners)
+      //            ganham "size" (largura em quartos de andar) e passam a poder ter "stock".
+      if (e.oldVersion > 0 && e.oldVersion < 5) {
+        const CATEGORY_RELABEL = {
+          folhetos: 'Folhetos', brochuras: 'Brochuras', convites: 'Convites',
+          livros: 'Livros', sentinela: 'A Sentinela', despertai: 'Despertai!'
+        };
         const itemsStore = tx.objectStore('items');
         itemsStore.openCursor().onsuccess = (ev) => {
           const cursor = ev.target.result;
@@ -60,6 +66,16 @@ function openDB() {
             item.sigla = item.subtitle || '';
             delete item.subtitle;
             changed = true;
+          }
+          if (e.oldVersion < 5) {
+            if (CATEGORY_RELABEL[item.category]) {
+              item.category = CATEGORY_RELABEL[item.category];
+              changed = true;
+            }
+            if (item.category !== 'banners' && item.size == null) {
+              item.size = 1;
+              changed = true;
+            }
           }
           if (changed) cursor.update(item);
           cursor.continue();
