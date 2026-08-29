@@ -211,7 +211,7 @@ function itemCardHTML(item) {
   const badge = item.fileType === 'pdf'
     ? '<span class="absolute top-1 right-1 bg-accent text-paper text-[8px] font-bold tracking-wide px-1 py-0.5 rounded font-mono">PDF</span>'
     : '';
-  const sub = item.subtitle ? `<div class="text-[9.5px] text-text-dim mt-0.5 truncate">${escapeHTML(item.subtitle)}</div>` : '';
+  const sub = item.sigla ? `<div class="text-[9.5px] text-text-dim mt-0.5 truncate">${escapeHTML(item.sigla)}</div>` : '';
   return `
     <div class="relative bg-surface border border-border rounded-lg overflow-hidden flex flex-col">
       <div class="aspect-[3/4] bg-surface-2 overflow-hidden"><img loading="lazy" class="w-full h-full object-cover block" src="${urlFor(item, 'thumb')}" alt=""></div>
@@ -241,8 +241,8 @@ fileInputHidden.addEventListener('change', async () => {
   `);
   try {
     const { thumbBlob, fileBlob, fileType, fileName } = await processUpload(file);
-    const suggestedTitle = fileName.replace(/\.[a-z0-9]+$/i, '').replace(/[_-]+/g, ' ');
-    showNewItemForm({ category, thumbBlob, fileBlob, fileType, fileName, suggestedTitle });
+    const suggestedSigla = fileName.replace(/\.[a-z0-9]+$/i, '');
+    showNewItemForm({ category, thumbBlob, fileBlob, fileType, fileName, suggestedSigla });
   } catch (err) {
     console.error(err);
     closeModal();
@@ -250,7 +250,7 @@ fileInputHidden.addEventListener('change', async () => {
   }
 });
 
-function showNewItemForm({ category, thumbBlob, fileBlob, fileType, fileName, suggestedTitle }) {
+function showNewItemForm({ category, thumbBlob, fileBlob, fileType, fileName, suggestedSigla }) {
   const catLabel = CATEGORIES.find(c => c.id === category)?.label || category;
   const previewUrl = URL.createObjectURL(thumbBlob);
 
@@ -261,11 +261,11 @@ function showNewItemForm({ category, thumbBlob, fileBlob, fileType, fileName, su
       <div class="flex-1 min-w-0">
         <div class="mb-3.5">
           <label class="field-label">Título</label>
-          <input type="text" id="f-title" class="field-input" placeholder="Ex: Como ter uma família feliz" value="${escapeHTML(suggestedTitle || '')}">
+          <input type="text" id="f-title" class="field-input" placeholder="Ex: Como ter uma família feliz">
         </div>
         <div class="mb-3.5">
-          <label class="field-label">Observação (opcional)</label>
-          <input type="text" id="f-subtitle" class="field-input" placeholder="Ex: Nº 3 2020">
+          <label class="field-label">Sigla</label>
+          <input type="text" id="f-sigla" class="field-input" placeholder="Ex: fg_2020" value="${escapeHTML(suggestedSigla || '')}">
         </div>
       </div>
     </div>
@@ -279,8 +279,8 @@ function showNewItemForm({ category, thumbBlob, fileBlob, fileType, fileName, su
   document.getElementById('f-save').addEventListener('click', async () => {
     const title = document.getElementById('f-title').value.trim();
     if (!title) { toast('Dê um título pro item.'); return; }
-    const subtitle = document.getElementById('f-subtitle').value.trim();
-    const item = { id: uid(), category, title, subtitle, fileType, fileName, thumbBlob, fileBlob, createdAt: Date.now() };
+    const sigla = document.getElementById('f-sigla').value.trim();
+    const item = { id: uid(), category, title, sigla, fileType, fileName, thumbBlob, fileBlob, createdAt: Date.now() };
     await DB.putItem(item);
     closeModal();
     toast('Item adicionado à biblioteca.');

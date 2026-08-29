@@ -22,7 +22,7 @@ async function exportBackup() {
       id: item.id,
       category: item.category,
       title: item.title,
-      subtitle: item.subtitle || '',
+      sigla: item.sigla || '',
       fileType: item.fileType,
       fileName: item.fileName,
       createdAt: item.createdAt,
@@ -32,7 +32,7 @@ async function exportBackup() {
   }
 
   zip.file('data.json', JSON.stringify({
-    version: 2,
+    version: 3,
     exportedAt: new Date().toISOString(),
     items: itemsMeta,
     carts
@@ -71,7 +71,7 @@ async function importBackup(file) {
       id: meta.id,
       category: meta.category,
       title: meta.title,
-      subtitle: meta.subtitle,
+      sigla: meta.sigla ?? meta.subtitle ?? '', // backups antigos (pré-v4) traziam "subtitle"
       fileType: meta.fileType,
       fileName: meta.fileName,
       createdAt: meta.createdAt,
