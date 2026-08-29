@@ -321,24 +321,57 @@ function groupHTML(group) {
     </div>`;
 }
 
+// Representação visual do carrinho físico: banner no topo (fileira inteira) + até 3
+// "andares" de publicações, 2 lado a lado por andar — igual à estrutura real do rack.
 function cartColHTML(group, cart) {
-  const last = cart.itemIds.length - 1;
-  const itemsHTML = cart.itemIds.map((id, idx) => {
-    const item = state.items.find(i => i.id === id);
-    if (!item) return '';
-    const isBanner = item.category === 'banners';
+  const entries = cart.itemIds
+    .map((id, idx) => ({ id, idx, item: state.items.find(i => i.id === id) }))
+    .filter(e => e.item);
+  const last = entries.length - 1;
+
+  function orderBtns(idx) {
     return `
-      <div class="cart-entry">
-        <div class="order-btns">
-          <button ${idx === 0 ? 'disabled' : ''} data-move-up="${group.id}" data-cart-id="${cart.id}" data-idx="${idx}">▲</button>
-          <button ${idx === last ? 'disabled' : ''} data-move-down="${group.id}" data-cart-id="${cart.id}" data-idx="${idx}">▼</button>
-        </div>
-        <div class="cart-item ${isBanner ? 'banner-item' : ''}" data-item-id="${id}">
-          <img src="${urlFor(item, 'thumb')}" alt="">
-          <button class="rm" data-rm-cart-item="${group.id}" data-cart-id="${cart.id}" data-idx="${idx}">×</button>
-        </div>
+      <div class="item-order">
+        <button ${idx === 0 ? 'disabled' : ''} data-move-up="${group.id}" data-cart-id="${cart.id}" data-idx="${idx}">▲</button>
+        <button ${idx === last ? 'disabled' : ''} data-move-down="${group.id}" data-cart-id="${cart.id}" data-idx="${idx}">▼</button>
       </div>`;
-  }).join('');
+  }
+
+  function entryHTML(e) {
+    return `
+      <div class="cart-item" data-item-id="${e.id}">
+        <img src="${urlFor(e.item, 'thumb')}" alt="">
+        ${orderBtns(e.idx)}
+        <button class="rm" data-rm-cart-item="${group.id}" data-cart-id="${cart.id}" data-idx="${e.idx}">×</button>
+      </div>`;
+  }
+
+  // agrupa em fileiras: banners ocupam a fileira inteira, o resto vai 2 a 2 (andar)
+  const rows = [];
+  let shelfBuf = [];
+  const flushShelf = () => { if (shelfBuf.length) { rows.push({ type: 'shelf', entries: shelfBuf }); shelfBuf = []; } };
+  for (const e of entries) {
+    if (e.item.category === 'banners') {
+      flushShelf();
+      rows.push({ type: 'banner', entries: [e] });
+    } else {
+      shelfBuf.push(e);
+      if (shelfBuf.length === 2) flushShelf();
+    }
+  }
+  flushShelf();
+
+  const bodyHTML = entries.length
+    ? rows.map(row => row.type === 'banner'
+        ? `<div class="cart-row banner-row">${entryHTML(row.entries[0])}</div>`
+        : `<div class="cart-row shelf-row">${row.entries.map(entryHTML).join('')}${row.entries.length === 1 ? '<div class="cart-item empty-slot"></div>' : ''}</div>`
+      ).join('')
+    : `
+      <div class="cart-row banner-row"><div class="cart-item empty-slot"></div></div>
+      <div class="cart-row shelf-row"><div class="cart-item empty-slot"></div><div class="cart-item empty-slot"></div></div>
+      <div class="cart-row shelf-row"><div class="cart-item empty-slot"></div><div class="cart-item empty-slot"></div></div>
+      <div class="cart-row shelf-row"><div class="cart-item empty-slot"></div><div class="cart-item empty-slot"></div></div>
+    `;
 
   return `
     <div class="cart-col">
@@ -346,11 +379,11 @@ function cartColHTML(group, cart) {
         <span class="name">${escapeHTML(cart.name)}</span>
         <button class="icon-btn danger" style="width:24px;height:24px;font-size:12px" data-del-cart="${group.id}" data-cart-id="${cart.id}" title="Excluir carrinho">🗑</button>
       </div>
-      <div class="cart-stack" data-cart-id="${cart.id}">
-        ${itemsHTML || '<div style="text-align:center;color:var(--text-dim);font-size:11.5px;padding:14px 4px;">Vazio</div>'}
+      <div class="cart-frame ${entries.length ? '' : 'skeleton'}">
+        <div class="cart-body">${bodyHTML}</div>
+        <div class="cart-wheels"><span class="wheel"></span><span class="wheel"></span></div>
       </div>
       <button class="cart-add-btn" data-cart-add-item="${group.id}" data-cart-id="${cart.id}">+ Item</button>
-      <div class="cart-wheels"><span></span><span></span></div>
     </div>`;
 }
 
