@@ -6,7 +6,9 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "build:css": "tailwindcss -i ./src/input.css -o ./styles.css --minify",
-    "watch:css": "tailwindcss -i ./src/input.css -o ./styles.css --watch"
+    "watch:css": "tailwindcss -i ./src/input.css -o ./styles.css --watch",
+    "watch:server": "live-server --port=${PORT:-8123} --no-browser --wait=150 --ignore=node_modules,.git,src,.claude --watch=index.html,app.js,db.js,files.js,backup.js,styles.css,service-worker.js,manifest.json",
+    "dev": "concurrently -k -n css,server \"npm:watch:css\" \"npm:watch:server\""
   },
   "repository": {
     "type": "git",
@@ -22,6 +24,8 @@
   "homepage": "https://github.com/igor-rl/tj-carrinhos#readme",
   "devDependencies": {
     "@tailwindcss/cli": "^4.3.3",
+    "concurrently": "^10.0.5",
+    "live-server": "^1.2.2",
     "tailwindcss": "^4.3.3"
   }
 }
