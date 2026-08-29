@@ -458,6 +458,9 @@ let dragState = null;
 function startDrag(e, item, source) {
   e.preventDefault();
   if (source) e.stopPropagation();
+  // no iPad, capturar o ponteiro evita que o Safari "roube" o gesto pro scroll no meio do
+  // arraste — os eventos continuam indo pro elemento de origem até soltar o dedo.
+  try { e.target.setPointerCapture?.(e.pointerId); } catch { /* nem todo navegador suporta */ }
   const isBanner = itemType(item) === 'banner';
   const ghost = document.createElement('img');
   ghost.src = urlFor(item, 'thumb');
@@ -933,8 +936,15 @@ if ('serviceWorker' in navigator) {
   if (isLocalDev) {
     navigator.serviceWorker.getRegistrations().then(regs => regs.forEach(r => r.unregister()));
   } else {
-    window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./service-worker.js').catch(() => {});
+    // recarrega automaticamente assim que uma versão nova assumir o controle — sem isso, o
+    // PWA instalado no iPad só pegaria os arquivos novos na verificação passiva do navegador,
+    // que no modo standalone é bem menos frequente do que abrir o app de fato.
+    navigator.serviceWorker.addEventListener('controllerchange', () => location.reload());
+    window.addEventListener('load', async () => {
+      try {
+        const reg = await navigator.serviceWorker.register('./service-worker.js');
+        reg.update(); // força checar por versão nova assim que o app abre, em vez de esperar
+      } catch { /* offline no primeiro load, ou navegador sem suporte — sem problema */ }
     });
   }
 }

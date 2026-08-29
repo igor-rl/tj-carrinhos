@@ -919,6 +919,11 @@
   button:disabled {
     cursor: not-allowed;
   }
+  .cursor-grab {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
 }
 @layer components {
   .rack-frame {
