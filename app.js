@@ -264,7 +264,9 @@ async function deleteCart(cart) {
 // ============================================================
 // BIBLIOTECA (direita) — por enquanto só exibição, sem função ao clicar
 // ============================================================
-function byTitle(a, b) { return a.title.localeCompare(b.title, 'pt-BR'); }
+function bySigla(a, b) {
+  return (a.sigla || '').localeCompare(b.sigla || '', 'pt-BR') || a.title.localeCompare(b.title, 'pt-BR');
+}
 
 function itemsGridHTML(items) {
   if (!items.length) {
@@ -287,9 +289,9 @@ function sectionHeadHTML(key, label, count) {
 }
 
 function renderToolbar() {
-  const banners = state.items.filter(i => i.category === 'banners').sort(byTitle);
+  const banners = state.items.filter(i => i.category === 'banners').sort(bySigla);
   const pubItems = state.items.filter(i => i.category !== 'banners');
-  const uncategorized = pubItems.filter(i => !(i.category || '').trim()).sort(byTitle);
+  const uncategorized = pubItems.filter(i => !(i.category || '').trim()).sort(bySigla);
 
   const categoryMap = new Map();
   for (const item of pubItems) {
@@ -301,7 +303,7 @@ function renderToolbar() {
   const categoryNames = [...categoryMap.keys()].sort((a, b) => a.localeCompare(b, 'pt-BR'));
 
   const categorySectionsHTML = categoryNames.map(cat => {
-    const items = categoryMap.get(cat).sort(byTitle);
+    const items = categoryMap.get(cat).sort(bySigla);
     return `
       <div class="mb-5">
         <div class="flex items-baseline gap-2 mb-2.5">
