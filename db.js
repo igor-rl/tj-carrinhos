@@ -1,6 +1,6 @@
 // db.js — camada de persistência local (IndexedDB). Tudo funciona offline.
 const DB_NAME = 'carrinho-publicacoes';
-const DB_VERSION = 5;
+const DB_VERSION = 6;
 
 let dbPromise = null;
 
@@ -78,6 +78,25 @@ function openDB() {
             }
           }
           if (changed) cursor.update(item);
+          cursor.continue();
+        };
+      }
+
+      // Migração v5 -> v6: carrinho ganha posições reais (banner + 12 slots de andar)
+      // em vez de só uma lista solta de itemIds (que nunca chegou a ser usada de fato).
+      if (e.oldVersion > 0 && e.oldVersion < 6) {
+        const cartsStore = tx.objectStore('carts');
+        cartsStore.openCursor().onsuccess = (ev) => {
+          const cursor = ev.target.result;
+          if (!cursor) return;
+          const cart = cursor.value;
+          let changed = false;
+          if (cart.bannerId === undefined) { cart.bannerId = null; changed = true; }
+          if (!Array.isArray(cart.shelf) || cart.shelf.length !== 12) {
+            cart.shelf = Array(12).fill(null);
+            changed = true;
+          }
+          if (changed) cursor.update(cart);
           cursor.continue();
         };
       }

@@ -113,10 +113,10 @@ function renderCartPanel() {
 
       <div class="rack-frame flex-1 min-h-0 w-auto max-w-full flex flex-col" style="aspect-ratio: 3 / 7">
         <div class="flex-1 min-h-0 flex flex-col gap-1.5 pb-1.5">
-          <div class="rack-slot h-full" style="flex: 1.6 1 0%"></div>
-          ${[0, 1, 2].map(() => `
+          ${bannerSlotHTML(cart)}
+          ${[0, 1, 2].map(row => `
             <div class="flex-1 min-h-0 grid grid-cols-4 gap-1">
-              ${[0, 1, 2, 3].map(() => '<div class="rack-slot rack-slot-shelf h-full"></div>').join('')}
+              ${shelfRowHTML(cart, row)}
             </div>`).join('')}
         </div>
         <div class="rack-wheels shrink-0"><span class="rack-wheel left-1.5"></span><span class="rack-wheel right-1.5"></span></div>
@@ -132,6 +132,48 @@ function renderCartPanel() {
   `;
 
   bindCartPanelEvents(cart);
+}
+
+// ---- slots do rack: vazio (alvo de drop) ou ocupado (item posicionado) ----
+function bannerSlotHTML(cart) {
+  const item = cart.bannerId && state.items.find(i => i.id === cart.bannerId);
+  if (item) {
+    return `
+      <div class="relative rounded-md overflow-hidden border border-border bg-surface-3 h-full" style="flex: 1.6 1 0%">
+        <img src="${urlFor(item, 'thumb')}" class="w-full h-full object-cover block" alt="">
+        <button class="absolute top-1 right-1 w-5 h-5 rounded-full bg-bg/80 text-paper text-[12px] flex items-center justify-center" data-remove-banner title="Remover">×</button>
+      </div>`;
+  }
+  return `<div class="rack-slot h-full" style="flex: 1.6 1 0%" data-drop="banner"></div>`;
+}
+
+function shelfRowHTML(cart, row) {
+  const cells = [];
+  let col = 0;
+  while (col < 4) {
+    const idx = row * 4 + col;
+    const itemId = cart.shelf[idx];
+    if (!itemId) {
+      cells.push(`<div class="rack-slot rack-slot-shelf h-full" data-drop="shelf" data-slot-index="${idx}"></div>`);
+      col++;
+      continue;
+    }
+    let span = 1;
+    while (col + span < 4 && cart.shelf[idx + span] === itemId) span++;
+    const item = state.items.find(i => i.id === itemId);
+    if (!item) {
+      // referência órfã (item foi excluído da biblioteca) — mostra vazio
+      cells.push(`<div class="rack-slot rack-slot-shelf h-full" data-drop="shelf" data-slot-index="${idx}"></div>`);
+    } else {
+      cells.push(`
+        <div class="relative rounded-md overflow-hidden border border-border bg-surface-3 h-full" style="grid-column: span ${span}">
+          <img src="${urlFor(item, 'thumb')}" class="w-full h-full object-cover block" alt="">
+          <button class="absolute top-0.5 right-0.5 w-4 h-4 rounded-full bg-bg/80 text-paper text-[10px] leading-none flex items-center justify-center" data-remove-shelf="${idx}" title="Remover">×</button>
+        </div>`);
+    }
+    col += span;
+  }
+  return cells.join('');
 }
 
 function bindCartPanelEvents(cart) {
@@ -155,10 +197,32 @@ function bindCartPanelEvents(cart) {
     cart.name = name;
     await DB.putCart(cart);
   });
+
+  cartPanel.querySelector('[data-remove-banner]')?.addEventListener('click', async () => {
+    cart.bannerId = null;
+    await DB.putCart(cart);
+    renderCartPanel();
+  });
+  cartPanel.querySelectorAll('[data-remove-shelf]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const startIdx = Number(btn.dataset.removeShelf);
+      const itemId = cart.shelf[startIdx];
+      let i = startIdx;
+      while (i < 12 && cart.shelf[i] === itemId) { cart.shelf[i] = null; i++; }
+      await DB.putCart(cart);
+      renderCartPanel();
+    });
+  });
 }
 
 async function createCart() {
-  const cart = { id: uid(), name: `Carrinho ${state.carts.length + 1}`, itemIds: [], order: state.carts.length };
+  const cart = {
+    id: uid(),
+    name: `Carrinho ${state.carts.length + 1}`,
+    bannerId: null,
+    shelf: Array(12).fill(null),
+    order: state.carts.length
+  };
   await DB.putCart(cart);
   await reloadCarts();
   state.currentCartIndex = state.carts.findIndex(c => c.id === cart.id);
@@ -248,6 +312,10 @@ function renderToolbar() {
       e.stopPropagation();
       openItemContextMenu(e, item);
     });
+    const isUnavailable = item.stock === 0 || item.stock === null || item.stock === false;
+    if (!isUnavailable) {
+      el.querySelector('img')?.addEventListener('pointerdown', (e) => startDrag(e, item));
+    }
   });
 }
 
@@ -261,7 +329,7 @@ function itemCardHTML(item) {
   return `
     <div class="relative bg-surface border border-border rounded-lg overflow-hidden flex flex-col" data-item-id="${item.id}">
       <div class="relative bg-surface-2">
-        <img loading="lazy" class="w-full h-auto block${unavailable ? ' brightness-[0.45] cursor-not-allowed' : ' cursor-grab active:cursor-grabbing'}" src="${urlFor(item, 'thumb')}" alt="">
+        <img loading="lazy" class="w-full h-auto block${unavailable ? ' brightness-[0.45] cursor-not-allowed' : ' cursor-grab active:cursor-grabbing touch-none'}" src="${urlFor(item, 'thumb')}" alt="">
         ${unavailableTag}
       </div>
       <button class="absolute top-1 right-1 w-5 h-5 rounded-full bg-bg/70 text-paper flex items-center justify-center text-[13px] leading-none active:bg-bg" data-menu-btn aria-label="Opções">⋮</button>
@@ -270,6 +338,88 @@ function itemCardHTML(item) {
         ${sub}
       </div>
     </div>`;
+}
+
+// ---- arrastar da biblioteca pro carrinho (Pointer Events — funciona com mouse e toque no iPad;
+//      drag-and-drop nativo HTML5 não dispara em toque no Safari do iPad, por isso não usamos) ----
+let dragState = null;
+
+function startDrag(e, item) {
+  e.preventDefault();
+  const isBanner = item.category === 'banners';
+  const ghost = document.createElement('img');
+  ghost.src = urlFor(item, 'thumb');
+  ghost.className = 'fixed pointer-events-none z-[200] w-[70px] h-auto rounded-md shadow-[0_6px_20px_rgba(0,0,0,0.4)] opacity-90';
+  ghost.style.left = (e.clientX - 35) + 'px';
+  ghost.style.top = (e.clientY - 35) + 'px';
+  document.body.appendChild(ghost);
+
+  dragState = { item, isBanner, ghost, hoverTarget: null };
+  document.addEventListener('pointermove', onDragMove);
+  document.addEventListener('pointerup', onDragEnd, { once: true });
+}
+
+function onDragMove(e) {
+  if (!dragState) return;
+  dragState.ghost.style.left = (e.clientX - 35) + 'px';
+  dragState.ghost.style.top = (e.clientY - 35) + 'px';
+  updateDropHighlight(e.clientX, e.clientY);
+}
+
+function updateDropHighlight(x, y) {
+  if (dragState.hoverTarget) {
+    dragState.hoverTarget.classList.remove('ring-2', 'ring-accent', 'ring-inset');
+    dragState.hoverTarget = null;
+  }
+  const el = document.elementFromPoint(x, y);
+  const target = findDropTarget(el);
+  if (target) {
+    target.classList.add('ring-2', 'ring-accent', 'ring-inset');
+    dragState.hoverTarget = target;
+  }
+}
+
+function findDropTarget(el) {
+  const dropEl = el?.closest('[data-drop]');
+  if (!dropEl) return null;
+  if (dragState.isBanner) {
+    return dropEl.dataset.drop === 'banner' ? dropEl : null;
+  }
+  if (dropEl.dataset.drop !== 'shelf') return null;
+  const idx = Number(dropEl.dataset.slotIndex);
+  return canPlaceAt(idx, dragState.item.size || 1) ? dropEl : null;
+}
+
+function canPlaceAt(startIdx, size) {
+  const cart = state.carts[state.currentCartIndex];
+  if (!cart) return false;
+  const col = startIdx % 4;
+  if (col + size > 4) return false; // não cabe no resto da fileira
+  for (let i = 0; i < size; i++) {
+    if (cart.shelf[startIdx + i]) return false; // slot ocupado
+  }
+  return true;
+}
+
+async function onDragEnd() {
+  document.removeEventListener('pointermove', onDragMove);
+  const target = dragState?.hoverTarget;
+  dragState?.ghost.remove();
+  if (target) await commitDrop(target);
+  dragState = null;
+}
+
+async function commitDrop(dropEl) {
+  const cart = state.carts[state.currentCartIndex];
+  if (dropEl.dataset.drop === 'banner') {
+    cart.bannerId = dragState.item.id;
+  } else {
+    const idx = Number(dropEl.dataset.slotIndex);
+    const size = dragState.item.size || 1;
+    for (let i = 0; i < size; i++) cart.shelf[idx + i] = dragState.item.id;
+  }
+  await DB.putCart(cart);
+  renderCartPanel();
 }
 
 // ---- menu de contexto (botão direito / toque longo) sobre uma miniatura ----
