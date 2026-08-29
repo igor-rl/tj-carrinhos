@@ -586,6 +586,25 @@ async function removeItemFromAllCarts(itemId) {
 // ---- upload de novo item pra biblioteca (um botão só — banner é detectado pela proporção) ----
 const BANNER_MIN_ASPECT = 1.8; // altura/largura mínima pra contar como banner (banner real ≈ 2.2)
 
+// lembra a última "largura no andar" e o checkbox "metade direita" usados — ajuda a
+// cadastrar vários itens parecidos em sequência sem repetir os mesmos ajustes.
+function getLastItemDefaults() {
+  try {
+    return {
+      size: Number(localStorage.getItem('cp:lastSize')) || 1,
+      coverRightHalf: localStorage.getItem('cp:lastCoverRightHalf') === '1'
+    };
+  } catch {
+    return { size: 1, coverRightHalf: false };
+  }
+}
+function saveLastItemDefaults(size, coverRightHalf) {
+  try {
+    localStorage.setItem('cp:lastSize', String(size));
+    localStorage.setItem('cp:lastCoverRightHalf', coverRightHalf ? '1' : '0');
+  } catch { /* localStorage indisponível — sem problema, é só conveniência */ }
+}
+
 function startUpload() {
   fileInputHidden.value = '';
   fileInputHidden.click();
@@ -606,11 +625,22 @@ fileInputHidden.addEventListener('change', async () => {
     <div class="flex items-center gap-2.5 text-text-dim text-[13px] py-2.5"><div class="spinner"></div> Gerando miniatura da capa…</div>
   `);
   try {
-    const { thumbBlob, fileBlob, fileType, fileName } = await processUpload(file);
-    const { w, h } = await getThumbDims(thumbBlob);
-    const category = (h / w >= BANNER_MIN_ASPECT) ? 'banners' : '';
+    const lastDefaults = getLastItemDefaults();
+    // gera sempre a partir da folha inteira: é essa proporção que decide banner x publicação
+    const { thumbBlob: fullThumbBlob, fileBlob, fileType, fileName } = await processUpload(file, false);
+    const fullDims = await getThumbDims(fullThumbBlob);
+    const category = (fullDims.h / fullDims.w >= BANNER_MIN_ASPECT) ? 'banners' : '';
+
+    // só depois de decidir a categoria é que aplicamos, como prévia inicial, o último
+    // ajuste de "capa é a metade direita" lembrado
+    let thumbBlob = fullThumbBlob, w = fullDims.w, h = fullDims.h;
+    if (lastDefaults.coverRightHalf) {
+      thumbBlob = await cropBlobRightHalf(fullThumbBlob);
+      ({ w, h } = await getThumbDims(thumbBlob));
+    }
+
     const suggestedSigla = fileName.replace(/\.[a-z0-9]+$/i, '');
-    showNewItemForm({ category, thumbBlob, fileBlob, fileType, fileName, suggestedSigla, thumbW: w, thumbH: h });
+    showNewItemForm({ category, thumbBlob, fileBlob, fileType, fileName, suggestedSigla, thumbW: w, thumbH: h, lastDefaults });
   } catch (err) {
     console.error(err);
     closeModal();
@@ -618,10 +648,12 @@ fileInputHidden.addEventListener('change', async () => {
   }
 });
 
-function showNewItemForm({ category, thumbBlob, fileBlob, fileType, fileName, suggestedSigla, thumbW, thumbH, existingItem }) {
+function showNewItemForm({ category, thumbBlob, fileBlob, fileType, fileName, suggestedSigla, thumbW, thumbH, existingItem, lastDefaults }) {
   const isEdit = !!existingItem;
   const isBanner = category === 'banners';
-  const previewUrl = URL.createObjectURL(thumbBlob);
+  const defaultSize = existingItem?.size ?? lastDefaults?.size ?? 1;
+  const defaultCoverRightHalf = existingItem ? !!existingItem.coverRightHalf : !!lastDefaults?.coverRightHalf;
+  let previewUrl = URL.createObjectURL(thumbBlob);
 
   const categoryOptions = isBanner ? [] : [...new Set(
     state.items
@@ -642,14 +674,20 @@ function showNewItemForm({ category, thumbBlob, fileBlob, fileType, fileName, su
     <div class="mb-3.5">
       <label class="field-label">Largura no andar</label>
       <select id="f-size" class="field-input">
-        ${SIZE_OPTIONS.map(o => `<option value="${o.n}" ${(existingItem?.size ?? 1) === o.n ? 'selected' : ''}>${o.label}</option>`).join('')}
+        ${SIZE_OPTIONS.map(o => `<option value="${o.n}" ${defaultSize === o.n ? 'selected' : ''}>${o.label}</option>`).join('')}
       </select>
     </div>`;
 
   openModal(`
     <h2 class="text-[17px] font-bold m-0 mb-4">${isEdit ? 'Editar' : 'Novo'} ${isBanner ? 'banner' : 'item'}</h2>
     <div class="flex gap-3.5 mb-1.5">
-      <img src="${previewUrl}" class="w-[90px] h-auto self-start rounded-lg border border-border shrink-0">
+      <div class="w-[90px] shrink-0">
+        <img id="f-cover-preview" src="${previewUrl}" class="w-full h-auto rounded-lg border border-border">
+        <label class="flex items-start gap-1.5 mt-2">
+          <input type="checkbox" id="f-cover-right-half" class="mt-0.5" ${defaultCoverRightHalf ? 'checked' : ''}>
+          <span class="text-[10.5px] text-text-dim leading-tight">Capa é a metade direita da folha</span>
+        </label>
+      </div>
       <div class="flex-1 min-w-0">
         <div class="mb-3.5">
           <label class="field-label">Título</label>
@@ -673,6 +711,30 @@ function showNewItemForm({ category, thumbBlob, fileBlob, fileType, fileName, su
     </div>
   `);
 
+  // estado mutável: o checkbox "metade direita" reprocessa a miniatura a partir do arquivo original
+  let currentThumbBlob = thumbBlob;
+  let currentThumbW = thumbW ?? existingItem?.thumbW;
+  let currentThumbH = thumbH ?? existingItem?.thumbH;
+
+  document.getElementById('f-cover-right-half').addEventListener('change', async (e) => {
+    const checkbox = e.target;
+    checkbox.disabled = true;
+    try {
+      const result = await processUpload(fileBlob, checkbox.checked);
+      currentThumbBlob = result.thumbBlob;
+      const dims = await getThumbDims(currentThumbBlob);
+      currentThumbW = dims.w;
+      currentThumbH = dims.h;
+      document.getElementById('f-cover-preview').src = URL.createObjectURL(currentThumbBlob);
+    } catch (err) {
+      console.error(err);
+      toast('Não consegui reprocessar a capa.');
+      checkbox.checked = !checkbox.checked;
+    } finally {
+      checkbox.disabled = false;
+    }
+  });
+
   document.getElementById('f-cancel').addEventListener('click', closeModal);
   document.getElementById('f-save').addEventListener('click', async () => {
     const title = document.getElementById('f-title').value.trim();
@@ -681,13 +743,15 @@ function showNewItemForm({ category, thumbBlob, fileBlob, fileType, fileName, su
     const finalCategory = isBanner ? 'banners' : document.getElementById('f-category').value.trim();
     const stockRaw = document.getElementById('f-stock').value.trim();
     const stock = stockRaw === '' ? 0 : Math.max(0, parseInt(stockRaw, 10) || 0);
+    const coverRightHalf = document.getElementById('f-cover-right-half').checked;
     const item = {
       id: existingItem?.id || uid(),
-      category: finalCategory, title, sigla, stock, fileType, fileName, thumbBlob, fileBlob,
-      thumbW: existingItem?.thumbW ?? thumbW, thumbH: existingItem?.thumbH ?? thumbH,
+      category: finalCategory, title, sigla, stock, fileType, fileName, fileBlob,
+      thumbBlob: currentThumbBlob, thumbW: currentThumbW, thumbH: currentThumbH, coverRightHalf,
       createdAt: existingItem?.createdAt || Date.now()
     };
     if (!isBanner) item.size = Number(document.getElementById('f-size').value);
+    saveLastItemDefaults(item.size ?? defaultSize, coverRightHalf);
     await DB.putItem(item);
     closeModal();
     toast(isEdit ? 'Item atualizado.' : 'Item adicionado à biblioteca.');
