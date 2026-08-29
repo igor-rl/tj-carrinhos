@@ -1,6 +1,6 @@
 // db.js — camada de persistência local (IndexedDB). Tudo funciona offline.
 const DB_NAME = 'carrinho-publicacoes';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 
 let dbPromise = null;
 
@@ -39,6 +39,21 @@ function openDB() {
             }
           }
           db.deleteObjectStore('groups');
+        };
+      }
+
+      // Migração v2 -> v3: categoria única "revistas" virou duas: "sentinela" e "despertai".
+      if (e.oldVersion < 3 && e.oldVersion > 0) {
+        const itemsStore = tx.objectStore('items');
+        itemsStore.openCursor().onsuccess = (ev) => {
+          const cursor = ev.target.result;
+          if (!cursor) return;
+          const item = cursor.value;
+          if (item.category === 'revistas') {
+            item.category = /^despertai/i.test(item.subtitle || '') ? 'despertai' : 'sentinela';
+            cursor.update(item);
+          }
+          cursor.continue();
         };
       }
     };

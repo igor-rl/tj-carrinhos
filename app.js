@@ -6,7 +6,8 @@ const CATEGORIES = [
   { id: 'brochuras', label: 'Brochuras' },
   { id: 'convites', label: 'Convites' },
   { id: 'livros', label: 'Livros' },
-  { id: 'revistas', label: 'Revistas' }
+  { id: 'sentinela', label: 'A Sentinela' },
+  { id: 'despertai', label: 'Despertai!' }
 ];
 
 const state = {
@@ -191,7 +192,7 @@ function renderToolbar() {
           <span class="font-mono uppercase tracking-wide text-[12px] font-bold text-bg bg-paper px-2.5 py-1 rounded">${cat.label}</span>
           <span class="text-[13px] text-text-dim">${items.length} ${items.length === 1 ? 'item' : 'itens'}</span>
         </div>
-        <div class="grid grid-cols-2 gap-2.5">
+        <div class="grid grid-cols-[repeat(auto-fill,minmax(130px,1fr))] gap-2.5">
           ${cards}
           <div class="add-tile aspect-[3/4] border-[1.5px] border-dashed border-border rounded-lg flex flex-col items-center justify-center gap-1.5 text-text-dim cursor-pointer active:bg-surface" data-add-cat="${cat.id}">
             <div class="text-2xl font-light leading-none text-accent">+</div>
@@ -251,16 +252,6 @@ fileInputHidden.addEventListener('change', async () => {
 
 function showNewItemForm({ category, thumbBlob, fileBlob, fileType, fileName, suggestedTitle }) {
   const catLabel = CATEGORIES.find(c => c.id === category)?.label || category;
-  const revistaField = category === 'revistas' ? `
-    <div class="mb-3.5">
-      <label class="field-label">Série</label>
-      <select id="f-serie" class="field-input">
-        <option value="">—</option>
-        <option value="A Sentinela">A Sentinela</option>
-        <option value="Despertai!">Despertai!</option>
-      </select>
-    </div>` : '';
-
   const previewUrl = URL.createObjectURL(thumbBlob);
 
   openModal(`
@@ -272,16 +263,10 @@ function showNewItemForm({ category, thumbBlob, fileBlob, fileType, fileName, su
           <label class="field-label">Título</label>
           <input type="text" id="f-title" class="field-input" placeholder="Ex: Como ter uma família feliz" value="${escapeHTML(suggestedTitle || '')}">
         </div>
-        ${category !== 'revistas' ? `
         <div class="mb-3.5">
           <label class="field-label">Observação (opcional)</label>
           <input type="text" id="f-subtitle" class="field-input" placeholder="Ex: Nº 3 2020">
-        </div>` : `
-        <div class="mb-3.5">
-          <label class="field-label">Edição (opcional)</label>
-          <input type="text" id="f-edicao" class="field-input" placeholder="Ex: Nº 3 2020">
         </div>
-        ${revistaField}`}
       </div>
     </div>
     <div class="flex gap-2.5 mt-4">
@@ -294,14 +279,7 @@ function showNewItemForm({ category, thumbBlob, fileBlob, fileType, fileName, su
   document.getElementById('f-save').addEventListener('click', async () => {
     const title = document.getElementById('f-title').value.trim();
     if (!title) { toast('Dê um título pro item.'); return; }
-    let subtitle = '';
-    if (category === 'revistas') {
-      const serie = document.getElementById('f-serie').value;
-      const edicao = document.getElementById('f-edicao').value.trim();
-      subtitle = [serie, edicao].filter(Boolean).join(' · ');
-    } else {
-      subtitle = document.getElementById('f-subtitle').value.trim();
-    }
+    const subtitle = document.getElementById('f-subtitle').value.trim();
     const item = { id: uid(), category, title, subtitle, fileType, fileName, thumbBlob, fileBlob, createdAt: Date.now() };
     await DB.putItem(item);
     closeModal();
