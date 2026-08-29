@@ -175,7 +175,7 @@ function shelfRowHTML(cart, row) {
       cells.push(`<div class="rack-slot rack-slot-shelf h-full" data-drop="shelf" data-slot-index="${idx}"></div>`);
     } else {
       cells.push(`
-        <div class="relative rounded-md overflow-hidden border border-border bg-surface-3 h-full" style="grid-column: span ${span}" data-drop="shelf" data-slot-index="${idx}">
+        <div class="relative rounded-md border border-border bg-surface-3" style="grid-column: span ${span}" data-drop="shelf" data-slot-index="${idx}">
           <img src="${urlFor(item, 'thumb')}" class="w-full h-auto block cursor-grab active:cursor-grabbing touch-none" data-move-shelf="${idx}" data-move-span="${span}" alt="">
           <button class="absolute top-0.5 right-0.5 w-4 h-4 rounded-full bg-bg/80 text-paper text-[10px] leading-none flex items-center justify-center" data-remove-shelf="${idx}" title="Remover">×</button>
         </div>`);
