@@ -103,7 +103,7 @@ function renderCartPanel() {
     <button id="btn-next-cart" ${atLast ? 'disabled' : ''} title="Próximo carrinho"
       class="absolute right-3 top-1/2 -translate-y-1/2 w-11 h-11 rounded-full bg-surface border border-border text-text text-xl flex items-center justify-center disabled:opacity-25 active:bg-surface-3 z-10">›</button>
 
-    <div class="w-full h-full max-h-full overflow-y-auto flex flex-col items-center py-2">
+    <div id="cart-scroll" class="w-full h-full max-h-full overflow-y-auto flex flex-col items-center py-2">
       <div class="w-full max-w-[380px] flex items-center gap-2 mb-3 shrink-0">
         <input id="cart-name-input" value="${escapeHTML(cart.name)}"
           class="flex-1 min-w-0 bg-transparent border-none text-paper text-xl font-bold tracking-tight text-center focus:outline-none focus:bg-surface-2 rounded-lg px-2 py-1">
@@ -115,7 +115,7 @@ function renderCartPanel() {
         <div class="flex flex-col gap-1.5 pb-1.5">
           ${bannerSlotHTML(cart)}
           ${[1, 2].map(row => `
-            <div class="grid grid-cols-4 gap-1" style="aspect-ratio: 3 / 1">
+            <div class="grid grid-cols-4 gap-1" style="aspect-ratio: 3 / 2">
               ${shelfRowHTML(cart, row)}
             </div>`).join('')}
         </div>
@@ -142,13 +142,13 @@ function bannerSlotHTML(cart) {
   const item = cart.bannerId && state.items.find(i => i.id === cart.bannerId);
   const ratio = (item && item.thumbW && item.thumbH) ? `${item.thumbW} / ${item.thumbH}` : DEFAULT_BANNER_RATIO;
   const backdrop = item
-    ? `<img src="${urlFor(item, 'thumb')}" class="absolute inset-0 w-full h-full object-cover" alt="">
+    ? `<img src="${urlFor(item, 'thumb')}" class="absolute inset-0 w-full h-full object-cover cursor-grab active:cursor-grabbing touch-none" data-move-banner alt="">
        <button class="absolute top-1 right-1 w-5 h-5 rounded-full bg-bg/80 text-paper text-[12px] flex items-center justify-center z-10" data-remove-banner title="Remover">×</button>`
     : `<div class="absolute inset-0 rack-slot"></div>`;
   return `
     <div class="relative w-full shrink-0 rounded-md overflow-hidden" style="aspect-ratio: ${ratio}" data-drop="banner">
       ${backdrop}
-      <div class="absolute bottom-0 left-0 right-0 grid grid-cols-4 gap-1" style="aspect-ratio: 3 / 1">
+      <div class="absolute bottom-0 left-0 right-0 grid grid-cols-4 gap-1" style="aspect-ratio: 3 / 2">
         ${shelfRowHTML(cart, 0)}
       </div>
     </div>`;
@@ -175,8 +175,8 @@ function shelfRowHTML(cart, row) {
       cells.push(`<div class="rack-slot rack-slot-shelf h-full" data-drop="shelf" data-slot-index="${idx}"></div>`);
     } else {
       cells.push(`
-        <div class="relative rounded-md overflow-hidden border border-border bg-surface-3 h-full" style="grid-column: span ${span}">
-          <img src="${urlFor(item, 'thumb')}" class="w-full h-full object-cover block" alt="">
+        <div class="relative rounded-md overflow-hidden border border-border bg-surface-3 h-full" style="grid-column: span ${span}" data-drop="shelf" data-slot-index="${idx}">
+          <img src="${urlFor(item, 'thumb')}" class="w-full h-full object-cover block cursor-grab active:cursor-grabbing touch-none" data-move-shelf="${idx}" data-move-span="${span}" alt="">
           <button class="absolute top-0.5 right-0.5 w-4 h-4 rounded-full bg-bg/80 text-paper text-[10px] leading-none flex items-center justify-center" data-remove-shelf="${idx}" title="Remover">×</button>
         </div>`);
     }
@@ -220,6 +220,21 @@ function bindCartPanelEvents(cart) {
       while (i < 12 && cart.shelf[i]?.placement === placement) { cart.shelf[i] = null; i++; }
       await DB.putCart(cart);
       renderCartPanel();
+    });
+  });
+
+  // arrastar um item já posicionado pra outro slot (move; se o destino tiver algo, troca)
+  cartPanel.querySelector('[data-move-banner]')?.addEventListener('pointerdown', (e) => {
+    const item = state.items.find(i => i.id === cart.bannerId);
+    if (item) startDrag(e, item, { type: 'banner' });
+  });
+  cartPanel.querySelectorAll('[data-move-shelf]').forEach(img => {
+    img.addEventListener('pointerdown', (e) => {
+      const startIdx = Number(img.dataset.moveShelf);
+      const span = Number(img.dataset.moveSpan);
+      const slot = cart.shelf[startIdx];
+      const item = state.items.find(i => i.id === slot?.itemId);
+      if (item) startDrag(e, item, { type: 'shelf', startIdx, span, placement: slot.placement });
     });
   });
 }
@@ -349,12 +364,15 @@ function itemCardHTML(item) {
     </div>`;
 }
 
-// ---- arrastar da biblioteca pro carrinho (Pointer Events — funciona com mouse e toque no iPad;
-//      drag-and-drop nativo HTML5 não dispara em toque no Safari do iPad, por isso não usamos) ----
+// ---- arrastar da biblioteca pro carrinho, ou mover/trocar um item já posicionado (Pointer
+//      Events — funciona com mouse e toque no iPad; drag-and-drop nativo HTML5 não dispara em
+//      toque no Safari do iPad, por isso não usamos) ----
 let dragState = null;
 
-function startDrag(e, item) {
+// source: undefined = vindo da biblioteca. { type:'banner' } ou { type:'shelf', startIdx, span, placement } = movendo algo que já estava no carrinho.
+function startDrag(e, item, source) {
   e.preventDefault();
+  if (source) e.stopPropagation();
   const isBanner = item.category === 'banners';
   const ghost = document.createElement('img');
   ghost.src = urlFor(item, 'thumb');
@@ -363,7 +381,7 @@ function startDrag(e, item) {
   ghost.style.top = (e.clientY - 35) + 'px';
   document.body.appendChild(ghost);
 
-  dragState = { item, isBanner, ghost, hoverTarget: null };
+  dragState = { item, isBanner, ghost, hoverTarget: null, source };
   document.addEventListener('pointermove', onDragMove);
   document.addEventListener('pointerup', onDragEnd, { once: true });
 }
@@ -373,6 +391,18 @@ function onDragMove(e) {
   dragState.ghost.style.left = (e.clientX - 35) + 'px';
   dragState.ghost.style.top = (e.clientY - 35) + 'px';
   updateDropHighlight(e.clientX, e.clientY);
+  autoScrollCartPanel(e.clientY);
+}
+
+// rola o carrinho automaticamente quando o arraste chega perto da borda de cima/baixo —
+// sem isso, slots fora da área visível (carrinho ficou mais alto que a tela) são inalcançáveis.
+function autoScrollCartPanel(y) {
+  const scroller = document.getElementById('cart-scroll');
+  if (!scroller) return;
+  const rect = scroller.getBoundingClientRect();
+  const edge = 44;
+  if (y < rect.top + edge) scroller.scrollTop -= 14;
+  else if (y > rect.bottom - edge) scroller.scrollTop += 14;
 }
 
 function updateDropHighlight(x, y) {
@@ -399,15 +429,25 @@ function findDropTarget(el) {
   return canPlaceAt(idx, dragState.item.size || 1) ? dropEl : null;
 }
 
+// vazio (ou só a própria origem, no caso de mover) = pode pousar; ocupado por exatamente
+// 1 outra colocação = pode pousar também (vira troca); mais de uma colocação no caminho = não cabe.
 function canPlaceAt(startIdx, size) {
   const cart = state.carts[state.currentCartIndex];
   if (!cart) return false;
   const col = startIdx % 4;
   if (col + size > 4) return false; // não cabe no resto da fileira
+  const src = dragState.source;
+  const ownStart = src?.type === 'shelf' ? src.startIdx : -1;
+  const ownEnd = src?.type === 'shelf' ? src.startIdx + src.span : -1;
+  const otherPlacements = new Set();
   for (let i = 0; i < size; i++) {
-    if (cart.shelf[startIdx + i]) return false; // slot ocupado
+    const idxI = startIdx + i;
+    if (idxI >= ownStart && idxI < ownEnd) continue; // é a própria origem, ignora
+    const slot = cart.shelf[idxI];
+    if (slot) otherPlacements.add(slot.placement);
   }
-  return true;
+  if (otherPlacements.size === 0) return true;
+  return !!src && otherPlacements.size === 1; // troca só é permitida movendo algo que já estava no carrinho
 }
 
 async function onDragEnd() {
@@ -420,16 +460,47 @@ async function onDragEnd() {
 
 async function commitDrop(dropEl) {
   const cart = state.carts[state.currentCartIndex];
+  const src = dragState.source;
+
   if (dropEl.dataset.drop === 'banner') {
     cart.bannerId = dragState.item.id;
+    if (src?.type === 'shelf') clearShelfSpan(cart, src.startIdx, src.span);
   } else {
     const idx = Number(dropEl.dataset.slotIndex);
     const size = dragState.item.size || 1;
-    const placement = uid();
+
+    // se o destino já tem algo (troca), guarda quem é antes de mexer
+    const displaced = [];
+    for (let i = 0; i < size; i++) {
+      const s = cart.shelf[idx + i];
+      if (s && !(src?.type === 'shelf' && idx + i >= src.startIdx && idx + i < src.startIdx + src.span)) {
+        if (!displaced.find(d => d.placement === s.placement)) displaced.push(s);
+      }
+    }
+
+    if (src?.type === 'banner') cart.bannerId = null;
+    if (src?.type === 'shelf') clearShelfSpan(cart, src.startIdx, src.span);
+    for (let i = 0; i < size; i++) cart.shelf[idx + i] = null;
+    const placement = src?.type === 'shelf' ? src.placement : uid();
     for (let i = 0; i < size; i++) cart.shelf[idx + i] = { itemId: dragState.item.id, placement };
+
+    // se veio de dentro do carrinho e deslocou alguém, tenta pousar quem foi deslocado na origem
+    if (src?.type === 'shelf' && displaced.length === 1) {
+      const occ = displaced[0];
+      const occItem = state.items.find(i => i.id === occ.itemId);
+      const occSize = occItem?.size || 1;
+      if (occSize <= src.span) {
+        for (let i = 0; i < occSize; i++) cart.shelf[src.startIdx + i] = { itemId: occ.itemId, placement: occ.placement };
+      }
+    }
   }
+
   await DB.putCart(cart);
   renderCartPanel();
+}
+
+function clearShelfSpan(cart, startIdx, span) {
+  for (let i = 0; i < span; i++) cart.shelf[startIdx + i] = null;
 }
 
 // ---- menu de contexto (botão direito / toque longo) sobre uma miniatura ----
