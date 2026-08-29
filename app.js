@@ -308,7 +308,7 @@ function renderToolbar() {
     const items = categoryMap.get(cat).sort(bySigla);
     return `
       <div class="mb-5">
-        <button class="flex items-baseline gap-2 mb-2.5" data-toggle-section="${escapeHTML(key)}">
+        <button class="w-full flex items-baseline gap-2 mb-2.5 px-2.5 py-2 rounded-md bg-surface" data-toggle-section="${escapeHTML(key)}">
           <span class="text-[12.5px] font-bold text-text">${escapeHTML(cat)}</span>
           <span class="text-[11.5px] text-text-dim">${items.length} ${items.length === 1 ? 'item' : 'itens'}</span>
           <span class="text-text-dim text-[10px] transition-transform${collapsed ? ' -rotate-90' : ''}">▾</span>
