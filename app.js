@@ -263,13 +263,13 @@ function renderCarrinhos() {
         <h3>Nenhum carrinho ainda</h3>
         <p>Crie uma ocasião (ex: "Mercado Municipal", "Ração") e monte o carrinho com um banner e as publicações, igual no seu layout do Figma.</p>
       </div>`;
-    document.getElementById('btn-add-group').addEventListener('click', showNewGroupForm);
+    document.getElementById('btn-add-group').addEventListener('click', () => showNewGroupForm());
     return;
   }
 
   const html = state.groups.map(groupHTML).join('');
   root.innerHTML = `<button class="add-group-btn" id="btn-add-group">＋ Nova ocasião</button>` + html;
-  document.getElementById('btn-add-group').addEventListener('click', showNewGroupForm);
+  document.getElementById('btn-add-group').addEventListener('click', () => showNewGroupForm());
 
   root.querySelectorAll('[data-edit-group]').forEach(el =>
     el.addEventListener('click', () => showNewGroupForm(findGroup(el.dataset.editGroup))));
