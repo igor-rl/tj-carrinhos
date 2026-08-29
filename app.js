@@ -261,7 +261,7 @@ function itemCardHTML(item) {
   return `
     <div class="relative bg-surface border border-border rounded-lg overflow-hidden flex flex-col" data-item-id="${item.id}">
       <div class="relative bg-surface-2">
-        <img loading="lazy" class="w-full h-auto block${unavailable ? ' brightness-[0.45]' : ''}" src="${urlFor(item, 'thumb')}" alt="">
+        <img loading="lazy" class="w-full h-auto block${unavailable ? ' brightness-[0.45] cursor-not-allowed' : ' cursor-grab active:cursor-grabbing'}" src="${urlFor(item, 'thumb')}" alt="">
         ${unavailableTag}
       </div>
       <button class="absolute top-1 right-1 w-5 h-5 rounded-full bg-bg/70 text-paper flex items-center justify-center text-[13px] leading-none active:bg-bg" data-menu-btn aria-label="Opções">⋮</button>
