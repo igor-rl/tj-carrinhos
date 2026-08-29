@@ -711,6 +711,8 @@ function showNewItemForm({ category, thumbBlob, fileBlob, fileType, fileName, su
     </div>
   `);
 
+  document.getElementById('f-title').focus();
+
   // estado mutável: o checkbox "metade direita" reprocessa a miniatura a partir do arquivo original
   let currentThumbBlob = thumbBlob;
   let currentThumbW = thumbW ?? existingItem?.thumbW;
