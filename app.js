@@ -752,7 +752,9 @@ function showNewItemForm({ category, thumbBlob, fileBlob, fileType, fileName, su
     const sigla = document.getElementById('f-sigla').value.trim();
     const finalCategory = isBanner ? 'banners' : document.getElementById('f-category').value.trim();
     const stockRaw = document.getElementById('f-stock').value.trim();
-    const stock = stockRaw === '' ? 0 : Math.max(0, parseInt(stockRaw, 10) || 0);
+    // em branco: item novo começa em 0; editar sem mexer no campo preserva "estoque não
+    // rastreado" (undefined) em vez de zerar o item sem querer (isso deixava tudo "Indisponível").
+    const stock = stockRaw === '' ? (isEdit ? existingItem.stock : 0) : Math.max(0, parseInt(stockRaw, 10) || 0);
     const coverRightHalf = document.getElementById('f-cover-right-half').checked;
     const item = {
       id: existingItem?.id || uid(),
