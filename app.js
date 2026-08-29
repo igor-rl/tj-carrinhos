@@ -242,23 +242,27 @@ function renderToolbar() {
   document.getElementById('btn-add-item').addEventListener('click', startUpload);
   toolbar.querySelectorAll('[data-item-id]').forEach(el => {
     const item = state.items.find(i => i.id === el.dataset.itemId);
-    if (item) el.addEventListener('contextmenu', (e) => openItemContextMenu(e, item));
+    if (!item) return;
+    el.addEventListener('contextmenu', (e) => openItemContextMenu(e, item));
+    el.querySelector('[data-menu-btn]')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openItemContextMenu(e, item);
+    });
   });
 }
 
 function itemCardHTML(item) {
   const sub = item.sigla ? `<div class="text-[9.5px] text-text-dim mt-0.5 truncate">${escapeHTML(item.sigla)}</div>` : '';
-  const unavailable = item.stock === 0;
-  const unavailableOverlay = unavailable ? `
-    <div class="absolute inset-0 flex items-center justify-center bg-bg/70">
-      <span class="text-[9px] font-bold uppercase tracking-wide text-danger bg-surface border border-danger px-1.5 py-0.5 rounded">Indisponível</span>
-    </div>` : '';
+  const unavailable = item.stock === 0 || item.stock === null || item.stock === false;
+  const unavailableTag = unavailable ? `
+    <span class="absolute top-1 left-1 text-[8px] font-bold uppercase tracking-wide text-danger bg-surface/90 border border-danger px-1 py-0.5 rounded">Indisponível</span>` : '';
   return `
     <div class="relative bg-surface border border-border rounded-lg overflow-hidden flex flex-col" data-item-id="${item.id}">
       <div class="relative bg-surface-2">
-        <img loading="lazy" class="w-full h-auto block${unavailable ? ' opacity-40' : ''}" src="${urlFor(item, 'thumb')}" alt="">
-        ${unavailableOverlay}
+        <img loading="lazy" class="w-full h-auto block${unavailable ? ' brightness-[0.45]' : ''}" src="${urlFor(item, 'thumb')}" alt="">
+        ${unavailableTag}
       </div>
+      <button class="absolute top-1 right-1 w-5 h-5 rounded-full bg-bg/70 text-paper flex items-center justify-center text-[13px] leading-none active:bg-bg" data-menu-btn aria-label="Opções">⋮</button>
       <div class="px-1.5 py-1">
         <div class="text-[10.5px] font-semibold leading-tight line-clamp-2">${escapeHTML(item.title)}</div>
         ${sub}
