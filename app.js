@@ -8,7 +8,8 @@ const state = {
   items: [],
   carts: [],
   currentCartIndex: 0,
-  objectUrls: new Map() // id:kind -> object URL (pra não recriar toda hora)
+  objectUrls: new Map(), // id:kind -> object URL (pra não recriar toda hora)
+  collapsedSections: new Set() // chaves de seção (ex: 'banners') recolhidas na biblioteca
 };
 
 const cartPanel = document.getElementById('cart-panel');
@@ -275,12 +276,14 @@ function itemsGridHTML(items) {
     </div>`;
 }
 
-function sectionHeadHTML(label, count) {
+function sectionHeadHTML(key, label, count) {
+  const collapsed = state.collapsedSections.has(key);
   return `
-    <div class="flex items-baseline gap-2.5 mb-3">
+    <button class="w-full flex items-center gap-2.5 mb-3 px-3 py-2.5 rounded-lg bg-surface-2 border border-border" data-toggle-section="${key}">
       <span class="font-mono uppercase tracking-wide text-[12px] font-bold text-bg bg-paper px-2.5 py-1 rounded">${escapeHTML(label)}</span>
       <span class="text-[13px] text-text-dim">${count} ${count === 1 ? 'item' : 'itens'}</span>
-    </div>`;
+      <span class="ml-auto text-text-dim text-[11px] transition-transform${collapsed ? ' -rotate-90' : ''}">▾</span>
+    </button>`;
 }
 
 function renderToolbar() {
@@ -310,24 +313,24 @@ function renderToolbar() {
   }).join('');
 
   toolbar.innerHTML = `
-    <div class="flex items-center justify-between mb-5">
-      <h2 class="text-[15px] font-bold text-text">Biblioteca</h2>
-      <button id="btn-add-item" class="flex items-center gap-1.5 bg-accent text-paper text-[13px] font-bold px-3.5 py-2 rounded-lg active:bg-accent-hover">
-        <span class="text-base leading-none">＋</span> Adicionar
-      </button>
-    </div>
     <section class="mb-7">
-      ${sectionHeadHTML('Banners', banners.length)}
-      ${itemsGridHTML(banners)}
+      ${sectionHeadHTML('banners', 'Banners', banners.length)}
+      ${state.collapsedSections.has('banners') ? '' : itemsGridHTML(banners)}
     </section>
     <section class="mb-7">
-      ${sectionHeadHTML(PUBLICACOES_LABEL, pubItems.length)}
-      ${itemsGridHTML(uncategorized)}
-      ${categorySectionsHTML}
+      ${sectionHeadHTML('publicacoes', PUBLICACOES_LABEL, pubItems.length)}
+      ${state.collapsedSections.has('publicacoes') ? '' : `${itemsGridHTML(uncategorized)}${categorySectionsHTML}`}
     </section>
   `;
 
-  document.getElementById('btn-add-item').addEventListener('click', startUpload);
+  toolbar.querySelectorAll('[data-toggle-section]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const key = btn.dataset.toggleSection;
+      if (state.collapsedSections.has(key)) state.collapsedSections.delete(key);
+      else state.collapsedSections.add(key);
+      renderToolbar();
+    });
+  });
   toolbar.querySelectorAll('[data-item-id]').forEach(el => {
     const item = state.items.find(i => i.id === el.dataset.itemId);
     if (!item) return;
@@ -692,6 +695,8 @@ function showNewItemForm({ category, thumbBlob, fileBlob, fileType, fileName, su
     renderToolbar();
   });
 }
+
+document.getElementById('btn-add-item').addEventListener('click', startUpload);
 
 // ============================================================
 // BACKUP — ícone no topo abre modal
