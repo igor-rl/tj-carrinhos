@@ -283,7 +283,7 @@ main#view-root {
 
 .cart-col {
   flex: 0 0 auto;
-  width: 196px;
+  width: 300px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -327,8 +327,8 @@ main#view-root {
 .cart-row.banner-row { display: flex; }
 .cart-row.shelf-row {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 5px;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
 }
 
 .cart-item {

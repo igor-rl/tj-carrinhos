@@ -322,7 +322,9 @@ function groupHTML(group) {
 }
 
 // Representação visual do carrinho físico: banner no topo (fileira inteira) + até 3
-// "andares" de publicações, 2 lado a lado por andar — igual à estrutura real do rack.
+// "andares" de publicações, 4 lado a lado por andar — igual à estrutura real do rack.
+const SHELF_SIZE = 4;
+
 function cartColHTML(group, cart) {
   const entries = cart.itemIds
     .map((id, idx) => ({ id, idx, item: state.items.find(i => i.id === id) }))
@@ -346,7 +348,7 @@ function cartColHTML(group, cart) {
       </div>`;
   }
 
-  // agrupa em fileiras: banners ocupam a fileira inteira, o resto vai 2 a 2 (andar)
+  // agrupa em fileiras: banners ocupam a fileira inteira, o resto vai SHELF_SIZE a SHELF_SIZE (andar)
   const rows = [];
   let shelfBuf = [];
   const flushShelf = () => { if (shelfBuf.length) { rows.push({ type: 'shelf', entries: shelfBuf }); shelfBuf = []; } };
@@ -356,21 +358,23 @@ function cartColHTML(group, cart) {
       rows.push({ type: 'banner', entries: [e] });
     } else {
       shelfBuf.push(e);
-      if (shelfBuf.length === 2) flushShelf();
+      if (shelfBuf.length === SHELF_SIZE) flushShelf();
     }
   }
   flushShelf();
 
+  const emptySlots = (n) => '<div class="cart-item empty-slot"></div>'.repeat(n);
+
   const bodyHTML = entries.length
     ? rows.map(row => row.type === 'banner'
         ? `<div class="cart-row banner-row">${entryHTML(row.entries[0])}</div>`
-        : `<div class="cart-row shelf-row">${row.entries.map(entryHTML).join('')}${row.entries.length === 1 ? '<div class="cart-item empty-slot"></div>' : ''}</div>`
+        : `<div class="cart-row shelf-row">${row.entries.map(entryHTML).join('')}${emptySlots(SHELF_SIZE - row.entries.length)}</div>`
       ).join('')
     : `
       <div class="cart-row banner-row"><div class="cart-item empty-slot"></div></div>
-      <div class="cart-row shelf-row"><div class="cart-item empty-slot"></div><div class="cart-item empty-slot"></div></div>
-      <div class="cart-row shelf-row"><div class="cart-item empty-slot"></div><div class="cart-item empty-slot"></div></div>
-      <div class="cart-row shelf-row"><div class="cart-item empty-slot"></div><div class="cart-item empty-slot"></div></div>
+      <div class="cart-row shelf-row">${emptySlots(SHELF_SIZE)}</div>
+      <div class="cart-row shelf-row">${emptySlots(SHELF_SIZE)}</div>
+      <div class="cart-row shelf-row">${emptySlots(SHELF_SIZE)}</div>
     `;
 
   return `
