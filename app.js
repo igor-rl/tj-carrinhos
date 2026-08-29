@@ -255,7 +255,9 @@ function itemCardHTML(item) {
   const sub = item.sigla ? `<div class="text-[9.5px] text-text-dim mt-0.5 truncate">${escapeHTML(item.sigla)}</div>` : '';
   const unavailable = item.stock === 0 || item.stock === null || item.stock === false;
   const unavailableTag = unavailable ? `
-    <span class="absolute top-1 left-1 text-[8px] font-bold uppercase tracking-wide text-danger bg-surface/90 border border-danger px-1 py-0.5 rounded">Indisponível</span>` : '';
+    <div class="absolute inset-0 flex items-center justify-center pointer-events-none">
+      <span class="text-[8px] font-bold uppercase tracking-wide text-danger bg-surface/90 border border-danger px-1.5 py-0.5 rounded text-center">Indisponível</span>
+    </div>` : '';
   return `
     <div class="relative bg-surface border border-border rounded-lg overflow-hidden flex flex-col" data-item-id="${item.id}">
       <div class="relative bg-surface-2">
