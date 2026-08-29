@@ -397,9 +397,6 @@
   .min-h-0 {
     min-height: 0px;
   }
-  .min-h-\[40px\] {
-    min-height: 40px;
-  }
   .w-2\/5 {
     width: calc(2 / 5 * 100%);
   }
