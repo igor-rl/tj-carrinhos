@@ -268,6 +268,18 @@ function bySigla(a, b) {
   return (a.sigla || '').localeCompare(b.sigla || '', 'pt-BR') || a.title.localeCompare(b.title, 'pt-BR');
 }
 
+// Fallback defensivo: se o item ainda não passou pela migração v8 (ex: app.js novo rodando
+// antes do db.js/versão do banco acompanharem — já aconteceu por causa do live-reload),
+// infere o tipo do jeito antigo em vez de tratá-lo como publicação com categoria "banners".
+function itemType(item) {
+  return item.type || (item.category === 'banners' ? 'banner' : 'publicacao');
+}
+// categoria "efetiva" pra agrupar/exibir — ignora o resquício "banners" de itens não migrados
+function itemDisplayCategory(item) {
+  const cat = (item.category || '').trim();
+  return cat === 'banners' ? '' : cat;
+}
+
 function itemsGridHTML(items) {
   if (!items.length) {
     return '<p class="text-[12.5px] text-text-dim">Nenhum item ainda.</p>';
@@ -290,10 +302,10 @@ function sectionHeadHTML(key, label, count) {
 
 // separa uma lista de itens em "sem categoria" + mapa categoria -> itens (ambos ordenados por sigla)
 function groupByCategory(items) {
-  const uncategorized = items.filter(i => !(i.category || '').trim()).sort(bySigla);
+  const uncategorized = items.filter(i => !itemDisplayCategory(i)).sort(bySigla);
   const map = new Map();
   for (const item of items) {
-    const cat = (item.category || '').trim();
+    const cat = itemDisplayCategory(item);
     if (!cat) continue;
     if (!map.has(cat)) map.set(cat, []);
     map.get(cat).push(item);
@@ -320,8 +332,8 @@ function categorySectionsHTML(groups, keyPrefix) {
 }
 
 function renderToolbar() {
-  const bannerItems = state.items.filter(i => i.type === 'banner').sort(bySigla);
-  const pubItems = state.items.filter(i => i.type !== 'banner');
+  const bannerItems = state.items.filter(i => itemType(i) === 'banner').sort(bySigla);
+  const pubItems = state.items.filter(i => itemType(i) !== 'banner');
 
   const bannerGroups = groupByCategory(bannerItems);
   const pubGroups = groupByCategory(pubItems);
@@ -390,7 +402,7 @@ let dragState = null;
 function startDrag(e, item, source) {
   e.preventDefault();
   if (source) e.stopPropagation();
-  const isBanner = item.type === 'banner';
+  const isBanner = itemType(item) === 'banner';
   const ghost = document.createElement('img');
   ghost.src = urlFor(item, 'thumb');
   ghost.className = 'fixed pointer-events-none z-[200] w-[70px] h-auto rounded-md shadow-[0_6px_20px_rgba(0,0,0,0.4)] opacity-90';
@@ -571,7 +583,7 @@ function openItemContextMenu(e, item) {
 
 function openEditItemModal(item) {
   showNewItemForm({
-    type: item.type,
+    type: itemType(item),
     thumbBlob: item.thumbBlob,
     fileBlob: item.fileBlob,
     fileType: item.fileType,
