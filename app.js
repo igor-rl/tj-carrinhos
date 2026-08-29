@@ -205,6 +205,10 @@ function renderToolbar() {
   toolbar.querySelectorAll('.add-tile[data-add-cat]').forEach(el => {
     el.addEventListener('click', () => startUpload(el.dataset.addCat));
   });
+  toolbar.querySelectorAll('[data-item-id]').forEach(el => {
+    const item = state.items.find(i => i.id === el.dataset.itemId);
+    if (item) el.addEventListener('contextmenu', (e) => openItemContextMenu(e, item));
+  });
 }
 
 function itemCardHTML(item) {
@@ -213,14 +217,91 @@ function itemCardHTML(item) {
     : '';
   const sub = item.sigla ? `<div class="text-[9.5px] text-text-dim mt-0.5 truncate">${escapeHTML(item.sigla)}</div>` : '';
   return `
-    <div class="relative bg-surface border border-border rounded-lg overflow-hidden flex flex-col">
-      <div class="aspect-[3/4] bg-surface-2 overflow-hidden"><img loading="lazy" class="w-full h-full object-cover block" src="${urlFor(item, 'thumb')}" alt=""></div>
+    <div class="relative bg-surface border border-border rounded-lg overflow-hidden flex flex-col" data-item-id="${item.id}">
+      <div class="bg-surface-2"><img loading="lazy" class="w-full h-auto block" src="${urlFor(item, 'thumb')}" alt=""></div>
       ${badge}
       <div class="px-1.5 py-1">
         <div class="text-[10.5px] font-semibold leading-tight line-clamp-2">${escapeHTML(item.title)}</div>
         ${sub}
       </div>
     </div>`;
+}
+
+// ---- menu de contexto (botão direito / toque longo) sobre uma miniatura ----
+let contextMenuEl = null;
+
+function closeContextMenu() {
+  document.removeEventListener('pointerdown', onOutsideContextMenuPointerDown, true);
+  document.removeEventListener('keydown', onContextMenuKeydown);
+  contextMenuEl?.remove();
+  contextMenuEl = null;
+}
+
+function onOutsideContextMenuPointerDown(e) {
+  if (contextMenuEl && !contextMenuEl.contains(e.target)) closeContextMenu();
+}
+
+function onContextMenuKeydown(e) {
+  if (e.key === 'Escape') closeContextMenu();
+}
+
+function openItemContextMenu(e, item) {
+  e.preventDefault();
+  closeContextMenu();
+
+  const menu = document.createElement('div');
+  menu.className = 'fixed z-[150] min-w-[140px] py-1 bg-surface border border-border rounded-lg shadow-[0_6px_20px_rgba(0,0,0,0.4)]';
+  menu.innerHTML = `
+    <button class="w-full text-left px-3.5 py-2.5 text-[13.5px] text-text active:bg-surface-3" data-action="edit">Editar</button>
+    <button class="w-full text-left px-3.5 py-2.5 text-[13.5px] text-danger active:bg-surface-3" data-action="delete">Excluir</button>
+  `;
+  document.body.appendChild(menu);
+  contextMenuEl = menu;
+
+  const maxLeft = window.innerWidth - menu.offsetWidth - 8;
+  const maxTop = window.innerHeight - menu.offsetHeight - 8;
+  menu.style.left = Math.max(8, Math.min(e.clientX, maxLeft)) + 'px';
+  menu.style.top = Math.max(8, Math.min(e.clientY, maxTop)) + 'px';
+
+  menu.querySelector('[data-action="edit"]').addEventListener('click', () => {
+    closeContextMenu();
+    openEditItemModal(item);
+  });
+  menu.querySelector('[data-action="delete"]').addEventListener('click', () => {
+    closeContextMenu();
+    deleteItem(item);
+  });
+
+  document.addEventListener('pointerdown', onOutsideContextMenuPointerDown, true);
+  document.addEventListener('keydown', onContextMenuKeydown);
+}
+
+function openEditItemModal(item) {
+  showNewItemForm({
+    category: item.category,
+    thumbBlob: item.thumbBlob,
+    fileBlob: item.fileBlob,
+    fileType: item.fileType,
+    fileName: item.fileName,
+    existingItem: item
+  });
+}
+
+async function deleteItem(item) {
+  if (!confirm(`Excluir "${item.title || item.sigla || 'este item'}" da biblioteca?`)) return;
+  await DB.deleteItem(item.id);
+  await removeItemFromAllCarts(item.id);
+  await reloadItems();
+  renderToolbar();
+  toast('Item excluído.');
+}
+
+async function removeItemFromAllCarts(itemId) {
+  for (const cart of state.carts) {
+    if (!cart.itemIds?.includes(itemId)) continue;
+    cart.itemIds = cart.itemIds.filter(id => id !== itemId);
+    await DB.putCart(cart);
+  }
 }
 
 // ---- upload de novo item pra biblioteca ----
@@ -250,22 +331,23 @@ fileInputHidden.addEventListener('change', async () => {
   }
 });
 
-function showNewItemForm({ category, thumbBlob, fileBlob, fileType, fileName, suggestedSigla }) {
+function showNewItemForm({ category, thumbBlob, fileBlob, fileType, fileName, suggestedSigla, existingItem }) {
+  const isEdit = !!existingItem;
   const catLabel = CATEGORIES.find(c => c.id === category)?.label || category;
   const previewUrl = URL.createObjectURL(thumbBlob);
 
   openModal(`
-    <h2 class="text-[17px] font-bold m-0 mb-4">Novo item · ${catLabel}</h2>
+    <h2 class="text-[17px] font-bold m-0 mb-4">${isEdit ? 'Editar item' : 'Novo item'} · ${catLabel}</h2>
     <div class="flex gap-3.5 mb-1.5">
-      <img src="${previewUrl}" class="w-[90px] aspect-[3/4] object-cover rounded-lg border border-border shrink-0">
+      <img src="${previewUrl}" class="w-[90px] h-auto self-start rounded-lg border border-border shrink-0">
       <div class="flex-1 min-w-0">
         <div class="mb-3.5">
           <label class="field-label">Título</label>
-          <input type="text" id="f-title" class="field-input" placeholder="Ex: Como ter uma família feliz">
+          <input type="text" id="f-title" class="field-input" placeholder="Ex: Como ter uma família feliz" value="${escapeHTML(existingItem?.title || '')}">
         </div>
         <div class="mb-3.5">
           <label class="field-label">Sigla</label>
-          <input type="text" id="f-sigla" class="field-input" placeholder="Ex: fg_2020" value="${escapeHTML(suggestedSigla || '')}">
+          <input type="text" id="f-sigla" class="field-input" placeholder="Ex: fg_2020" value="${escapeHTML(existingItem?.sigla ?? suggestedSigla ?? '')}">
         </div>
       </div>
     </div>
@@ -280,10 +362,14 @@ function showNewItemForm({ category, thumbBlob, fileBlob, fileType, fileName, su
     const title = document.getElementById('f-title').value.trim();
     if (!title) { toast('Dê um título pro item.'); return; }
     const sigla = document.getElementById('f-sigla').value.trim();
-    const item = { id: uid(), category, title, sigla, fileType, fileName, thumbBlob, fileBlob, createdAt: Date.now() };
+    const item = {
+      id: existingItem?.id || uid(),
+      category, title, sigla, fileType, fileName, thumbBlob, fileBlob,
+      createdAt: existingItem?.createdAt || Date.now()
+    };
     await DB.putItem(item);
     closeModal();
-    toast('Item adicionado à biblioteca.');
+    toast(isEdit ? 'Item atualizado.' : 'Item adicionado à biblioteca.');
     await reloadItems();
     renderToolbar();
   });
