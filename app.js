@@ -437,8 +437,8 @@ function itemCardHTML(item) {
     <div class="relative bg-surface border border-border rounded-lg overflow-hidden flex flex-col" data-item-id="${item.id}">
       <input type="number" min="0" step="1" inputmode="numeric" placeholder="Estoque" value="${item.stock ?? ''}"
         class="w-full text-center text-[10px] bg-surface-2 text-text border-b border-border py-1 focus:outline-none focus:bg-surface-3" data-stock-input>
-      <div class="relative bg-surface-2" data-thumb-wrap>
-        <img loading="lazy" class="${thumbImgClass(item, 'cursor-grab active:cursor-grabbing touch-none')}" data-thumb-img src="${urlFor(item, 'thumb')}" alt="">
+      <div class="relative bg-surface-2 flex-1 min-h-[40px]" data-thumb-wrap>
+        <img loading="lazy" class="${thumbImgClass(item, 'absolute bottom-0 left-0 cursor-grab active:cursor-grabbing touch-none')}" data-thumb-img src="${urlFor(item, 'thumb')}" alt="">
         ${unavailableTagHTML(item)}
         <button class="absolute top-1 right-1 w-5 h-5 rounded-full bg-bg/70 text-paper flex items-center justify-center text-[13px] leading-none active:bg-bg" data-menu-btn aria-label="Opções">⋮</button>
       </div>
