@@ -27,12 +27,18 @@
     </button>
   </header>
 
-  <div class="flex flex-1 min-h-0">
-    <!-- Carrinho (esquerda, 2/5, não rolável) -->
-    <main id="cart-panel" class="w-2/5 min-w-0 shrink-0 flex items-center justify-center p-6 relative"></main>
+  <div class="flex flex-1 min-h-0" id="panels">
+    <!-- Carrinho (esquerda, largura ajustável arrastando a divisória, não rolável) -->
+    <main id="cart-panel" class="shrink-0 overflow-hidden flex items-center justify-center p-6 relative"></main>
 
-    <!-- Biblioteca (direita, 3/5, rolável) -->
-    <aside id="toolbar" class="w-3/5 min-w-0 border-l border-border overflow-y-auto p-4"></aside>
+    <!-- Divisória: arraste pra redimensionar, botão recolhe/expande o carrinho -->
+    <div id="panel-resizer" class="relative w-2.5 shrink-0 cursor-col-resize touch-none group">
+      <div class="absolute inset-y-0 left-1/2 -translate-x-1/2 w-px bg-border group-hover:bg-accent/60"></div>
+      <button id="btn-toggle-cart" type="button" class="pointer-events-auto absolute top-1/2 -translate-y-1/2 left-1/2 -translate-x-1/2 w-6 h-11 rounded-md bg-surface-2 border border-border flex items-center justify-center text-text-dim text-[13px] leading-none active:bg-surface-3 z-10" aria-label="Recolher carrinho">‹</button>
+    </div>
+
+    <!-- Biblioteca (direita, ocupa o espaço restante, rolável) -->
+    <aside id="toolbar" class="min-w-[260px] flex-1 overflow-y-auto px-7 pb-8"></aside>
   </div>
 
 </div>

@@ -14,6 +14,9 @@ const state = {
 
 const cartPanel = document.getElementById('cart-panel');
 const toolbar = document.getElementById('toolbar');
+const panelsEl = document.getElementById('panels');
+const panelResizer = document.getElementById('panel-resizer');
+const btnToggleCart = document.getElementById('btn-toggle-cart');
 const modalOverlay = document.getElementById('modal-overlay');
 const modalBox = document.getElementById('modal-box');
 const fileInputHidden = document.getElementById('file-input-hidden');
@@ -154,6 +157,70 @@ function fitCartRackToPanel() {
     rackFrame.style.maxWidth = newWidth + 'px';
   }
 }
+
+// ---- divisória arrastável entre o carrinho e a biblioteca, com botão de recolher/expandir
+//      o carrinho (útil no iPad em retrato, onde a biblioteca precisa de mais espaço) ----
+const CART_MIN_W = 220;
+const CART_TOGGLE_ICON = { expanded: '‹', collapsed: '›' };
+let cartCollapsed = false;
+let lastExpandedCartWidth = 320;
+
+function applyCartWidth(px) {
+  cartPanel.style.width = px + 'px';
+}
+
+function setCartCollapsed(collapsed) {
+  cartCollapsed = collapsed;
+  if (collapsed) {
+    applyCartWidth(0);
+    panelResizer.classList.add('pointer-events-none');
+  } else {
+    applyCartWidth(lastExpandedCartWidth);
+    panelResizer.classList.remove('pointer-events-none');
+  }
+  btnToggleCart.textContent = collapsed ? CART_TOGGLE_ICON.collapsed : CART_TOGGLE_ICON.expanded;
+  btnToggleCart.setAttribute('aria-label', collapsed ? 'Expandir carrinho' : 'Recolher carrinho');
+  try {
+    localStorage.setItem('cp:cartCollapsed', collapsed ? '1' : '0');
+  } catch { /* localStorage indisponível — sem problema, é só conveniência */ }
+  fitCartRackToPanel();
+}
+
+function initPanelSizing() {
+  try {
+    const savedWidth = Number(localStorage.getItem('cp:cartWidth'));
+    if (savedWidth > 0) lastExpandedCartWidth = savedWidth;
+    cartCollapsed = localStorage.getItem('cp:cartCollapsed') === '1';
+  } catch { /* localStorage indisponível — sem problema, é só conveniência */ }
+  setCartCollapsed(cartCollapsed);
+}
+
+btnToggleCart.addEventListener('click', () => setCartCollapsed(!cartCollapsed));
+
+panelResizer.addEventListener('pointerdown', (e) => {
+  // o botão de recolher/expandir mora dentro da divisória — sem essa checagem, o toque nele
+  // borbulha até aqui e o preventDefault abaixo suprime o "click" sintético no Safari/iPad.
+  if (cartCollapsed || e.target.closest('#btn-toggle-cart')) return;
+  e.preventDefault();
+  try { panelResizer.setPointerCapture(e.pointerId); } catch { /* nem todo navegador suporta */ }
+  const onMove = (ev) => {
+    const bounds = panelsEl.getBoundingClientRect();
+    const maxW = Math.max(CART_MIN_W, bounds.width * 0.7);
+    const w = Math.min(maxW, Math.max(CART_MIN_W, ev.clientX - bounds.left));
+    applyCartWidth(w);
+    lastExpandedCartWidth = w;
+  };
+  const onUp = () => {
+    document.removeEventListener('pointermove', onMove);
+    document.removeEventListener('pointerup', onUp);
+    try {
+      localStorage.setItem('cp:cartWidth', String(Math.round(lastExpandedCartWidth)));
+    } catch { /* localStorage indisponível — sem problema, é só conveniência */ }
+    fitCartRackToPanel();
+  };
+  document.addEventListener('pointermove', onMove);
+  document.addEventListener('pointerup', onUp, { once: true });
+});
 
 // ---- banner: pano de fundo alto (proporção real da miniatura), com a fileira 1 encostada
 //      na base dele, na frente — como um banner de chão atrás das prateleiras ----
@@ -307,7 +374,7 @@ function itemsGridHTML(items) {
     return '<p class="text-[12.5px] text-text-dim">Nenhum item ainda.</p>';
   }
   return `
-    <div class="grid grid-cols-[repeat(auto-fill,minmax(96px,1fr))] items-start gap-2">
+    <div class="flex items-start gap-2 overflow-x-auto overscroll-x-contain pb-1 -mx-1 px-1">
       ${items.map(itemCardHTML).join('')}
     </div>`;
 }
@@ -315,7 +382,7 @@ function itemsGridHTML(items) {
 function sectionHeadHTML(key, label, count) {
   const collapsed = state.collapsedSections.has(key);
   return `
-    <button class="w-full flex items-center gap-2.5 mb-3 px-3 py-2.5 rounded-lg bg-surface-2 border border-border" data-toggle-section="${key}">
+    <button class="sticky top-0 z-20 w-full h-11 flex items-center gap-2.5 mb-3 px-3 rounded-lg bg-surface-2 border border-border" data-toggle-section="${key}">
       <span class="font-mono uppercase tracking-wide text-[12px] font-bold text-bg bg-paper px-2.5 py-1 rounded">${escapeHTML(label)}</span>
       <span class="text-[13px] text-text-dim">${count} ${count === 1 ? 'item' : 'itens'}</span>
       <span class="ml-auto text-text-dim text-[11px] transition-transform${collapsed ? ' -rotate-90' : ''}">▾</span>
@@ -343,7 +410,7 @@ function categorySectionsHTML(groups, keyPrefix) {
     const items = groups.map.get(cat).sort(bySigla);
     return `
       <div class="mb-5">
-        <button class="w-full flex items-baseline gap-2 mb-2.5 px-2.5 py-2 rounded-md bg-surface" data-toggle-section="${escapeHTML(key)}">
+        <button class="sticky top-11 z-10 w-full h-9 flex items-center gap-2 mb-2.5 px-2.5 rounded-md bg-surface" data-toggle-section="${escapeHTML(key)}">
           <span class="text-[12.5px] font-bold text-text">${escapeHTML(cat)}</span>
           <span class="text-[11.5px] text-text-dim">${items.length} ${items.length === 1 ? 'item' : 'itens'}</span>
           <span class="text-text-dim text-[10px] transition-transform${collapsed ? ' -rotate-90' : ''}">▾</span>
@@ -382,7 +449,12 @@ function renderToolbar() {
   toolbar.querySelectorAll('[data-item-id]').forEach(el => {
     const item = state.items.find(i => i.id === el.dataset.itemId);
     if (!item) return;
-    el.addEventListener('contextmenu', (e) => openItemContextMenu(e, item));
+    el.addEventListener('contextmenu', (e) => {
+      // no toque, o próprio Safari dispara "contextmenu" no toque-e-segure — mas aí é o
+      // nosso hold-to-drag que deve ganhar, não o menu. No toque, as opções ficam só no "⋮".
+      if (lastPointerType !== 'mouse') { e.preventDefault(); return; }
+      openItemContextMenu(e, item);
+    });
     el.querySelector('[data-menu-btn]')?.addEventListener('click', (e) => {
       e.stopPropagation();
       openItemContextMenu(e, item);
@@ -434,7 +506,7 @@ function updateCardAvailability(card, item) {
 function itemCardHTML(item) {
   const sub = item.sigla ? `<div class="text-[9.5px] text-text-dim mt-0.5 truncate">${escapeHTML(item.sigla)}</div>` : '';
   return `
-    <div class="relative bg-surface border border-border rounded-lg overflow-hidden flex flex-col" data-item-id="${item.id}">
+    <div class="relative w-24 shrink-0 bg-surface border border-border rounded-lg overflow-hidden flex flex-col" data-item-id="${item.id}">
       <input type="number" min="0" step="1" inputmode="numeric" placeholder="Estoque" value="${item.stock ?? ''}"
         class="w-full text-center text-[10px] bg-surface-2 text-text border-b border-border py-1 focus:outline-none focus:bg-surface-3" data-stock-input>
       <div class="relative bg-surface-2" data-thumb-wrap>
@@ -454,19 +526,63 @@ function itemCardHTML(item) {
 //      toque no Safari do iPad, por isso não usamos) ----
 let dragState = null;
 
+// usado pra decidir, no handler de "contextmenu", se foi o Safari abrindo o menu nativo por
+// causa de um toque-e-segure (aí suprimimos) ou um botão direito de mouse de verdade.
+let lastPointerType = 'mouse';
+document.addEventListener('pointerdown', (e) => { lastPointerType = e.pointerType || 'mouse'; }, true);
+
 // source: undefined = vindo da biblioteca. { type:'banner' } ou { type:'shelf', startIdx, span, placement } = movendo algo que já estava no carrinho.
+// no mouse, o arraste começa na hora (pointerdown). No toque, exige tocar e segurar por um
+// tempinho antes de começar — assim um toque rápido continua rolando a página normalmente,
+// e evita brigar com o menu de contexto nativo do Safari (toque-e-segure também abre ele).
+const TOUCH_HOLD_MS = 450;
+const TOUCH_MOVE_CANCEL_PX = 10;
+let pendingHold = null;
+
 function startDrag(e, item, source) {
-  e.preventDefault();
+  if (e.pointerType && e.pointerType !== 'mouse') {
+    // não chama preventDefault aqui: precisamos deixar o scroll normal acontecer caso o
+    // toque vire um gesto de rolagem em vez de virar um "segurar" — só decidimos isso depois.
+    const x = e.clientX, y = e.clientY, pointerId = e.pointerId, target = e.currentTarget;
+    const timer = setTimeout(() => {
+      cleanupPendingHold();
+      beginDragNow(x, y, pointerId, target, item, source);
+    }, TOUCH_HOLD_MS);
+    pendingHold = { timer, pointerId, x, y };
+    document.addEventListener('pointermove', onHoldMove);
+    document.addEventListener('pointerup', cleanupPendingHold);
+    document.addEventListener('pointercancel', cleanupPendingHold);
+    return;
+  }
   if (source) e.stopPropagation();
+  beginDragNow(e.clientX, e.clientY, e.pointerId, e.currentTarget, item, source);
+}
+
+function onHoldMove(e) {
+  if (!pendingHold || e.pointerId !== pendingHold.pointerId) return;
+  const dx = e.clientX - pendingHold.x, dy = e.clientY - pendingHold.y;
+  // moveu demais antes do tempo de segurar terminar — é rolagem, não arraste. Cancela.
+  if (Math.hypot(dx, dy) > TOUCH_MOVE_CANCEL_PX) cleanupPendingHold();
+}
+
+function cleanupPendingHold() {
+  if (pendingHold) clearTimeout(pendingHold.timer);
+  pendingHold = null;
+  document.removeEventListener('pointermove', onHoldMove);
+  document.removeEventListener('pointerup', cleanupPendingHold);
+  document.removeEventListener('pointercancel', cleanupPendingHold);
+}
+
+function beginDragNow(x, y, pointerId, targetEl, item, source) {
   // no iPad, capturar o ponteiro evita que o Safari "roube" o gesto pro scroll no meio do
   // arraste — os eventos continuam indo pro elemento de origem até soltar o dedo.
-  try { e.target.setPointerCapture?.(e.pointerId); } catch { /* nem todo navegador suporta */ }
+  try { targetEl?.setPointerCapture?.(pointerId); } catch { /* nem todo navegador suporta */ }
   const isBanner = itemType(item) === 'banner';
   const ghost = document.createElement('img');
   ghost.src = urlFor(item, 'thumb');
   ghost.className = 'fixed pointer-events-none z-[200] w-[70px] h-auto rounded-md shadow-[0_6px_20px_rgba(0,0,0,0.4)] opacity-90';
-  ghost.style.left = (e.clientX - 35) + 'px';
-  ghost.style.top = (e.clientY - 35) + 'px';
+  ghost.style.left = (x - 35) + 'px';
+  ghost.style.top = (y - 35) + 'px';
   document.body.appendChild(ghost);
 
   dragState = { item, isBanner, ghost, hoverTarget: null, source };
@@ -921,6 +1037,7 @@ importInputHidden.addEventListener('change', async () => {
 // ============================================================
 // BOOT
 // ============================================================
+initPanelSizing();
 render();
 
 let resizeDebounce;
