@@ -672,6 +672,13 @@ async function commitDrop(dropEl) {
 
     if (src?.type === 'banner') cart.bannerId = null;
     if (src?.type === 'shelf') clearShelfSpan(cart, src.startIdx, src.span);
+    // limpa o item deslocado inteiro, não só as células que caem dentro do destino — senão,
+    // quando ele começava antes do slot em que soltamos, sobrava um pedaço fantasma dele.
+    for (const d of displaced) {
+      for (let i = 0; i < cart.shelf.length; i++) {
+        if (cart.shelf[i]?.placement === d.placement) cart.shelf[i] = null;
+      }
+    }
     for (let i = 0; i < size; i++) cart.shelf[idx + i] = null;
     const placement = src?.type === 'shelf' ? src.placement : uid();
     for (let i = 0; i < size; i++) cart.shelf[idx + i] = { itemId: dragState.item.id, placement };
