@@ -230,7 +230,7 @@ function bannerSlotHTML(cart) {
   const item = cart.bannerId && state.items.find(i => i.id === cart.bannerId);
   const ratio = (item && item.thumbW && item.thumbH) ? `${item.thumbW} / ${item.thumbH}` : DEFAULT_BANNER_RATIO;
   const backdrop = item
-    ? `<img src="${urlFor(item, 'thumb')}" class="absolute inset-0 w-full h-full object-cover cursor-grab active:cursor-grabbing touch-none${isItemUnavailable(item) ? ' brightness-[0.45]' : ''}" data-move-banner alt="">
+    ? `<img src="${urlFor(item, 'thumb')}" draggable="false" class="absolute inset-0 w-full h-full object-cover cursor-grab active:cursor-grabbing touch-none${isItemUnavailable(item) ? ' brightness-[0.45]' : ''}" data-move-banner alt="">
        ${unavailableTagHTML(item)}
        <button class="absolute top-1 right-1 w-5 h-5 rounded-full bg-bg/80 text-paper text-[12px] flex items-center justify-center z-10" data-remove-banner title="Remover">×</button>`
     : `<div class="absolute inset-0 rack-slot"></div>`;
@@ -265,7 +265,7 @@ function shelfRowHTML(cart, row) {
     } else {
       cells.push(`
         <div class="relative h-full" style="grid-column: span ${span}" data-drop="shelf" data-slot-index="${idx}">
-          <img src="${urlFor(item, 'thumb')}" class="absolute bottom-0 left-0 w-full h-auto block rounded-md cursor-grab active:cursor-grabbing touch-none${isItemUnavailable(item) ? ' brightness-[0.45]' : ''}" data-move-shelf="${idx}" data-move-span="${span}" alt="">
+          <img src="${urlFor(item, 'thumb')}" draggable="false" class="absolute bottom-0 left-0 w-full h-auto block rounded-md cursor-grab active:cursor-grabbing touch-none${isItemUnavailable(item) ? ' brightness-[0.45]' : ''}" data-move-shelf="${idx}" data-move-span="${span}" alt="">
           ${unavailableTagHTML(item)}
           <button class="absolute top-0.5 right-0.5 w-4 h-4 rounded-full bg-bg/80 text-paper text-[10px] leading-none flex items-center justify-center" data-remove-shelf="${idx}" title="Remover">×</button>
         </div>`);
@@ -510,7 +510,7 @@ function itemCardHTML(item) {
       <input type="number" min="0" step="1" inputmode="numeric" placeholder="Estoque" value="${item.stock ?? ''}"
         class="w-full text-center text-[10px] bg-surface-2 text-text border-b border-border py-1 focus:outline-none focus:bg-surface-3" data-stock-input>
       <div class="relative bg-surface-2" data-thumb-wrap>
-        <img loading="lazy" class="${thumbImgClass(item, 'cursor-grab active:cursor-grabbing touch-none')}" data-thumb-img src="${urlFor(item, 'thumb')}" alt="">
+        <img loading="lazy" draggable="false" class="${thumbImgClass(item, 'cursor-grab active:cursor-grabbing touch-none')}" data-thumb-img src="${urlFor(item, 'thumb')}" alt="">
         ${unavailableTagHTML(item)}
         <button class="absolute top-1 right-1 w-5 h-5 rounded-full bg-bg/70 text-paper flex items-center justify-center text-[13px] leading-none active:bg-bg" data-menu-btn aria-label="Opções">⋮</button>
       </div>

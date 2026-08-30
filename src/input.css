@@ -35,11 +35,16 @@
   button { cursor: pointer; }
   button:disabled { cursor: not-allowed; }
   /* miniaturas arrastáveis: sem isso o Safari do iPad intercepta o toque pro menu de
-     "salvar imagem"/seleção antes do nosso drag (Pointer Events) conseguir tratar o gesto. */
+     "salvar imagem"/seleção antes do nosso drag (Pointer Events) conseguir tratar o gesto.
+     -webkit-user-drag é o que impede o próprio Safari de iniciar o "arraste nativo" da
+     <img> (o gesto de tirar uma imagem da página e soltar em outro app) — sem isso, os dois
+     arrastes competiam ao mesmo tempo: o nosso ghost customizado e a prévia nativa da imagem. */
   .cursor-grab {
     -webkit-touch-callout: none;
     -webkit-user-select: none;
     user-select: none;
+    -webkit-user-drag: none;
+    user-drag: none;
   }
 }
 
