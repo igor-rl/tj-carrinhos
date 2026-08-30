@@ -1,4 +1,4 @@
-const CACHE_NAME = 'carrinho-publicacoes-v3';
+const CACHE_NAME = 'carrinho-publicacoes-v4';
 const ASSETS = [
   './',
   './index.html',
@@ -29,17 +29,28 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// Cache-first: tudo que o app precisa já está no cache após a 1ª visita.
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
-  event.respondWith(
-    caches.match(event.request).then((cached) => {
-      if (cached) return cached;
-      return fetch(event.request).then((res) => {
+
+  // libs de terceiros (vendor/) não mudam entre deploys — cache-first economiza banda.
+  if (new URL(event.request.url).pathname.includes('/vendor/')) {
+    event.respondWith(
+      caches.match(event.request).then((cached) => cached || fetch(event.request).then((res) => {
         const copy = res.clone();
         caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
         return res;
-      }).catch(() => cached);
-    })
+      }))
+    );
+    return;
+  }
+
+  // app shell (html/js/css): tenta a rede primeiro, pra nunca mais depender de bump manual
+  // do CACHE_NAME pra pegar uma versão nova — só cai pro cache se estiver offline.
+  event.respondWith(
+    fetch(event.request).then((res) => {
+      const copy = res.clone();
+      caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+      return res;
+    }).catch(() => caches.match(event.request))
   );
 });
